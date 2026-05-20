@@ -1,5 +1,5 @@
 {
-  "name": "c2pa-soft-binding-server",
+  "name": "c2pasoftbindingserver",
   "version": "1.0.0",
   "description": "C2PA Soft Binding Resolution API v2.3.0 server implementation",
   "main": "dist/server.js",

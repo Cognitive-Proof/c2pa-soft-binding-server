@@ -17,6 +17,8 @@ const app = express();
 // Global JSON body parser — individual routes add their own raw parsers as needed
 app.use(express.json());
 
+app.get('/', (_req, res) => res.send('C2PA-Softbinding-Server - Healthy'));
+
 app.use('/v1', queryRouter);
 app.use('/v1', storeRouter);
 app.use('/v1', fetchRouter);
