@@ -1,12 +1,10 @@
-'use strict';
-
-const express = require('express');
-const { getSupportedAlgorithms } = require('../softBinding');
+import express, { Request, Response } from 'express';
+import { getSupportedAlgorithms } from '../softBinding';
 
 const router = express.Router();
 
 // GET /services/supportedAlgorithms  — no auth required (public capability discovery)
-router.get('/services/supportedAlgorithms', (req, res) => {
+router.get('/services/supportedAlgorithms', (_req: Request, res: Response) => {
   try {
     return res.json(getSupportedAlgorithms());
   } catch {
@@ -14,4 +12,4 @@ router.get('/services/supportedAlgorithms', (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

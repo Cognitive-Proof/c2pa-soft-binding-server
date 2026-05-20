@@ -1,9 +1,7 @@
-'use strict';
-
 // Plugin registry for soft binding extraction.
 //
 // To add a watermark or fingerprint algorithm:
-//   const { registerExtractor } = require('./softBinding');
+//   import { registerExtractor } from './softBinding';
 //   registerExtractor('com.example.watermark.v1', async (buffer, mimeType) => {
 //     // Detect watermark in buffer, return base64-encoded binding value or null
 //     const id = await myWatermarkLib.detect(buffer);
@@ -13,11 +11,18 @@
 // Algorithm names must appear in the C2PA soft binding algorithm list:
 //   https://github.com/c2pa-org/softbinding-algorithm-list
 
-const supportedWatermarks = [];
-const supportedFingerprints = [];
-const extractors = new Map(); // alg -> async (buffer, mimeType) => string|null
+export type Extractor = (buffer: Buffer, mimeType: string) => Promise<string | null>;
 
-function registerExtractor(alg, fn) {
+export interface SupportedAlgorithms {
+  watermarks: Array<{ alg: string }>;
+  fingerprints: Array<{ alg: string }>;
+}
+
+const supportedWatermarks: string[] = [];
+const supportedFingerprints: string[] = [];
+const extractors = new Map<string, Extractor>();
+
+export function registerExtractor(alg: string, fn: Extractor): void {
   extractors.set(alg, fn);
   if (alg.includes('watermark') && !supportedWatermarks.includes(alg)) {
     supportedWatermarks.push(alg);
@@ -26,17 +31,19 @@ function registerExtractor(alg, fn) {
   }
 }
 
-async function extractSoftBinding(buffer, mimeType, alg) {
+export async function extractSoftBinding(
+  buffer: Buffer,
+  mimeType: string,
+  alg: string,
+): Promise<string | null> {
   const fn = extractors.get(alg);
   if (!fn) return null;
   return fn(buffer, mimeType);
 }
 
-function getSupportedAlgorithms() {
+export function getSupportedAlgorithms(): SupportedAlgorithms {
   return {
     watermarks: supportedWatermarks.map(alg => ({ alg })),
     fingerprints: supportedFingerprints.map(alg => ({ alg })),
   };
 }
-
-module.exports = { registerExtractor, extractSoftBinding, getSupportedAlgorithms };

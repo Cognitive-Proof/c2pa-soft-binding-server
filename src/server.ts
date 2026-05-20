@@ -1,28 +1,30 @@
-'use strict';
-
-require('dotenv').config();
-
-const express = require('express');
-const { PORT } = require('./src/config');
+import 'dotenv/config';
+import express, { Request, Response, NextFunction } from 'express';
+import { PORT } from './config';
 
 // Plug in your watermark / fingerprint extractors here before starting the server.
 // Example:
-//   const { registerExtractor } = require('./src/softBinding');
+//   import { registerExtractor } from './softBinding';
 //   registerExtractor('com.example.watermark.v1', async (buffer, mimeType) => { ... });
+
+import queryRouter from './routes/query';
+import storeRouter from './routes/store';
+import fetchRouter from './routes/fetch';
+import serviceRouter from './routes/service';
 
 const app = express();
 
 // Global JSON body parser — individual routes add their own raw parsers as needed
 app.use(express.json());
 
-app.use('/v1', require('./src/routes/query'));
-app.use('/v1', require('./src/routes/store'));
-app.use('/v1', require('./src/routes/fetch'));
-app.use('/v1', require('./src/routes/service'));
+app.use('/v1', queryRouter);
+app.use('/v1', storeRouter);
+app.use('/v1', fetchRouter);
+app.use('/v1', serviceRouter);
 
-app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
+app.use((_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 
-app.use((err, _req, res, _next) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
 });
@@ -53,4 +55,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = app;
+export default app;
