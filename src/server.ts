@@ -1,5 +1,9 @@
 import 'dotenv/config';
+import path from 'path';
+import fs from 'fs';
 import express, { Request, Response, NextFunction } from 'express';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yaml';
 import { PORT } from './config';
 
 // Plug in your watermark / fingerprint extractors here before starting the server.
@@ -18,6 +22,13 @@ const app = express();
 app.use(express.json());
 
 app.get('/', (_req, res) => res.send('C2PA-Softbinding-Server - Healthy'));
+
+// OpenAPI spec + interactive docs
+const openapiPath = path.join(__dirname, '..', 'openapi.yaml');
+const openapiDocument = YAML.parse(fs.readFileSync(openapiPath, 'utf8'));
+
+app.get('/v1/openapi.json', (_req, res) => res.json(openapiDocument));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
 app.use('/v1', queryRouter);
 app.use('/v1', storeRouter);
@@ -54,6 +65,10 @@ if (require.main === module) {
     console.log('');
     console.log('Service routes:');
     console.log('  GET  /v1/services/supportedAlgorithms');
+    console.log('');
+    console.log('Docs:');
+    console.log('  GET  /docs');
+    console.log('  GET  /v1/openapi.json');
   });
 }
 

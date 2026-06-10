@@ -1,0 +1,545 @@
+openapi: 3.0.3
+info:
+  title: C2PA Soft Binding Resolution API
+  description: >
+    Implementation of the C2PA Soft Binding Resolution API
+    (https://spec.c2pa.org/specifications/specifications/2.4/softbinding/Decoupled.html).
+    Allows clients to store C2PA Manifest Stores, associate them with soft
+    binding values (watermarks or fingerprints), and recover those manifests
+    from a previously detected binding.
+  version: "2.4"
+servers:
+  - url: /v1
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Query
+    description: Find manifests from a soft binding
+  - name: Store
+    description: Ingest manifests and manage bindings
+  - name: Fetch
+    description: Retrieve manifests and receipts
+  - name: Service
+    description: Capability discovery
+
+paths:
+  /matches/byBinding:
+    get:
+      tags: [Query]
+      summary: Find manifests by a soft binding value (query string)
+      operationId: getMatchesByBinding
+      parameters:
+        - $ref: '#/components/parameters/value'
+        - $ref: '#/components/parameters/alg'
+        - $ref: '#/components/parameters/maxResults'
+      responses:
+        '200':
+          $ref: '#/components/responses/Matches'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+    post:
+      tags: [Query]
+      summary: Find manifests by a soft binding value (request body)
+      description: Used when the binding value is too large to fit in a query string.
+      operationId: postMatchesByBinding
+      parameters:
+        - $ref: '#/components/parameters/maxResults'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, alg]
+              properties:
+                value:
+                  type: string
+                  description: Base64-encoded soft binding value
+                alg:
+                  type: string
+                  description: Soft binding algorithm identifier
+      responses:
+        '200':
+          $ref: '#/components/responses/Matches'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /matches/byContent:
+    post:
+      tags: [Query]
+      summary: Extract a soft binding from an uploaded asset and find matches
+      operationId: getMatchesByContent
+      parameters:
+        - $ref: '#/components/parameters/algOptional'
+        - $ref: '#/components/parameters/hintAlg'
+        - $ref: '#/components/parameters/hintValue'
+        - $ref: '#/components/parameters/maxResults'
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+          audio/*:
+            schema:
+              type: string
+              format: binary
+          video/*:
+            schema:
+              type: string
+              format: binary
+          application/*:
+            schema:
+              type: string
+              format: binary
+          model/*:
+            schema:
+              type: string
+              format: binary
+          text/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          $ref: '#/components/responses/Matches'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          description: Unsupported asset type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /matches/byReference:
+    post:
+      tags: [Query]
+      summary: Download an asset by reference URL, extract a soft binding, and find matches
+      operationId: getMatchesByReference
+      parameters:
+        - $ref: '#/components/parameters/algOptional'
+        - $ref: '#/components/parameters/hintAlg'
+        - $ref: '#/components/parameters/hintValue'
+        - $ref: '#/components/parameters/maxResults'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [referenceUrl, assetLength]
+              properties:
+                referenceUrl:
+                  type: string
+                  format: uri
+                  description: HTTPS URL the server will fetch the asset from
+                assetLength:
+                  type: integer
+                  description: Expected size of the asset in bytes
+                assetType:
+                  type: string
+                  description: Expected MIME type of the asset
+                region:
+                  description: Optional region of interest within the asset
+      responses:
+        '200':
+          $ref: '#/components/responses/Matches'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: Failed to fetch the reference URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /manifests:
+    post:
+      tags: [Store]
+      summary: Ingest a C2PA Manifest Store
+      operationId: postManifest
+      parameters:
+        - name: returnReceipt
+          in: query
+          description: If true, generate and return a repository receipt for the manifest.
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          application/c2pa:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Manifest stored successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  manifestId:
+                    type: string
+                    example: "urn:c2pa:12345678-1234-1234-1234-123456789abc"
+                  receipt:
+                    $ref: '#/components/schemas/Receipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /bindings:
+    post:
+      tags: [Store]
+      summary: Associate a soft binding value with a stored manifest
+      operationId: createBinding
+      requestBody:
+        $ref: '#/components/requestBodies/Binding'
+      responses:
+        '204':
+          description: Binding created
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Soft binding id or C2PA Manifest id not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+    put:
+      tags: [Store]
+      summary: Replace the manifest a soft binding value points to
+      operationId: updateBinding
+      requestBody:
+        $ref: '#/components/requestBodies/Binding'
+      responses:
+        '204':
+          description: Binding updated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Soft binding value not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /manifests/{manifestId}:
+    get:
+      tags: [Fetch]
+      summary: Retrieve a stored C2PA Manifest Store
+      operationId: getManifest
+      parameters:
+        - $ref: '#/components/parameters/manifestId'
+      responses:
+        '200':
+          description: The C2PA Manifest Store
+          content:
+            application/c2pa:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: C2PA Manifest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+    delete:
+      tags: [Store]
+      summary: Remove a manifest and its associated bindings
+      operationId: deleteManifest
+      parameters:
+        - $ref: '#/components/parameters/manifestId'
+      responses:
+        '204':
+          description: Manifest deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: C2PA Manifest Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /manifests/{manifestId}/receipts:
+    get:
+      tags: [Fetch]
+      summary: Retrieve the repository receipt for a manifest
+      operationId: getManifestReceipt
+      parameters:
+        - $ref: '#/components/parameters/manifestId'
+      responses:
+        '200':
+          description: The stored receipt, including verification status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: C2PA Manifest Store or receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+    post:
+      tags: [Fetch]
+      summary: Verify a caller-supplied receipt against a stored manifest
+      operationId: verifyManifestReceipt
+      parameters:
+        - $ref: '#/components/parameters/manifestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Receipt'
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: C2PA Manifest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /services/supportedAlgorithms:
+    get:
+      tags: [Service]
+      summary: List the watermark and fingerprint algorithms this instance supports
+      operationId: getSupportedAlgorithms
+      security: []
+      responses:
+        '200':
+          description: Supported algorithms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  watermarks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Algorithm'
+                  fingerprints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Algorithm'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    value:
+      name: value
+      in: query
+      required: true
+      description: Base64-encoded soft binding value
+      schema:
+        type: string
+    alg:
+      name: alg
+      in: query
+      required: true
+      description: Soft binding algorithm identifier
+      schema:
+        type: string
+    algOptional:
+      name: alg
+      in: query
+      required: false
+      description: Soft binding algorithm to use for extraction
+      schema:
+        type: string
+    hintAlg:
+      name: hintAlg
+      in: query
+      required: false
+      description: Algorithm identifier for a caller-supplied binding hint
+      schema:
+        type: string
+    hintValue:
+      name: hintValue
+      in: query
+      required: false
+      description: Caller-supplied binding value used if extraction fails
+      schema:
+        type: string
+    maxResults:
+      name: maxResults
+      in: query
+      required: false
+      description: Maximum number of matches to return
+      schema:
+        type: integer
+        minimum: 1
+        default: 10
+    manifestId:
+      name: manifestId
+      in: path
+      required: true
+      description: Identifier of a stored C2PA Manifest Store
+      schema:
+        type: string
+
+  requestBodies:
+    Binding:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [bindingValue, manifestId]
+            properties:
+              bindingValue:
+                type: string
+                description: Base64-encoded soft binding value
+              manifestId:
+                type: string
+                description: Identifier of a previously stored C2PA Manifest Store
+
+  responses:
+    Matches:
+      description: Matching manifests, ordered by relevance
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              matches:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Match'
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceFailure:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    Algorithm:
+      type: object
+      properties:
+        alg:
+          type: string
+    Match:
+      type: object
+      properties:
+        manifestId:
+          type: string
+        similarityScore:
+          type: number
+    Receipt:
+      type: object
+      properties:
+        '@context':
+          type: object
+          properties:
+            c2pa:
+              type: string
+            receipt:
+              type: string
+        '@type':
+          type: string
+          example: org.c2pa.manifest-receipt
+        repository:
+          type: object
+          properties:
+            uri:
+              type: string
+            manifestId:
+              type: string
+        anchor:
+          type: object
+          properties:
+            uri:
+              type: string
+            proof:
+              type: object
+              properties:
+                alg:
+                  type: string
+                value:
+                  type: string
+        verified:
+          type: boolean
+        error:
+          type: string
