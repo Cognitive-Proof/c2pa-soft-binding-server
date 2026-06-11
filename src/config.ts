@@ -1,9 +1,54 @@
 import crypto from 'crypto';
+import type { RequestHandler } from 'express';
+import type { DataStorePlugin, ObjectStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
+import type { Extractor } from './softBinding';
+import type { JwtAuthOptions } from './auth';
 
-export const PORT = parseInt(process.env.PORT ?? '3000', 10);
-export const REPO_URI = process.env.REPO_URI ?? 'http://localhost:3000';
-// Generate a random secret if none is configured (ephemeral — receipts won't survive restart)
-export const RECEIPT_SECRET =
-  process.env.RECEIPT_SECRET ?? crypto.randomBytes(32).toString('hex');
-export const MAX_UPLOAD_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE ?? '52428800', 10);
-export const MAX_REFERENCE_SIZE = parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10);
+export interface SoftBindingServerOptions {
+  /** Public base URI of this server, embedded in receipts. Default: REPO_URI env var, then http://localhost:3000 */
+  repoUri?: string;
+  /** Secret used to sign/verify receipts (HMAC-SHA256). Default: RECEIPT_SECRET env var, else a random secret (won't survive restart). */
+  receiptSecret?: string;
+  /** Max size (bytes) of a directly-uploaded asset. Default: MAX_UPLOAD_SIZE env var, else 50MB. */
+  maxUploadSize?: number;
+  /** Max size (bytes) of an asset downloaded via byReference. Default: MAX_REFERENCE_SIZE env var, else 100MB. */
+  maxReferenceSize?: number;
+  /** A DataStorePlugin instance, or the name of an npm package implementing one. Default: DATASTORE_PLUGIN env var, else the bundled MongoDB plugin. */
+  dataStore?: DataStorePlugin | string;
+  /** An ObjectStorePlugin instance, or the name of an npm package implementing one. Default: OBJECTSTORE_PLUGIN env var, else the bundled GCS plugin. */
+  objectStore?: ObjectStorePlugin | string;
+  /** GCP project used to verify Identity Platform JWTs with the default auth. Default: GCP_PROJECT_ID env var. */
+  gcpProjectId?: string;
+  /**
+   * Custom authentication for `/v1` routes. Either an Express middleware
+   * (bring your own auth scheme), or `{ issuer, audience, jwksUri }` to
+   * verify JWTs from any OIDC-compatible identity provider. If omitted,
+   * falls back to Google Identity Platform using `gcpProjectId`.
+   */
+  auth?: RequestHandler | JwtAuthOptions;
+  /** Soft binding watermark/fingerprint extractors, keyed by algorithm name. */
+  extractors?: Record<string, Extractor>;
+  /** Mount /docs and /v1/openapi.json. Default: true. */
+  docs?: boolean;
+}
+
+export interface ResolvedConfig {
+  repoUri: string;
+  receiptSecret: string;
+  maxUploadSize: number;
+  maxReferenceSize: number;
+  docs: boolean;
+}
+
+export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedConfig {
+  return {
+    repoUri: options.repoUri ?? process.env.REPO_URI ?? 'http://localhost:3000',
+    receiptSecret:
+      options.receiptSecret ?? process.env.RECEIPT_SECRET ?? crypto.randomBytes(32).toString('hex'),
+    maxUploadSize:
+      options.maxUploadSize ?? parseInt(process.env.MAX_UPLOAD_SIZE ?? '52428800', 10),
+    maxReferenceSize:
+      options.maxReferenceSize ?? parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10),
+    docs: options.docs ?? true,
+  };
+}

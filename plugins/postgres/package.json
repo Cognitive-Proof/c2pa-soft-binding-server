@@ -1,0 +1,21 @@
+{
+  "name": "@cognitiveproof/softbinding-api-plugin-postgres",
+  "version": "1.0.0",
+  "description": "PostgreSQL data store plugin for the C2PA Soft Binding Resolution API server",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.3.3"
+  }
+}

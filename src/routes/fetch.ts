@@ -1,57 +1,59 @@
-import express, { Request, Response } from 'express';
+import express, { Request, RequestHandler, Response, Router } from 'express';
 import crypto from 'crypto';
-import { requireAuth } from '../auth';
-import * as db from '../store';
-import { Receipt } from '../store';
-import { RECEIPT_SECRET } from '../config';
+import type { DataStorePlugin, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
 
-const router = express.Router();
-
-function verifyProof(manifestId: string, proof: string | undefined): boolean {
-  if (!proof) return false;
-  const expected = crypto
-    .createHmac('sha256', RECEIPT_SECRET)
-    .update(manifestId)
-    .digest('base64url');
-  // Constant-time comparison to prevent timing attacks
-  try {
-    return crypto.timingSafeEqual(Buffer.from(proof), Buffer.from(expected));
-  } catch {
-    return false;
-  }
+export interface FetchRouterDeps {
+  dataStore: DataStorePlugin;
+  auth: RequestHandler;
+  receiptSecret: string;
 }
 
-// GET /manifests/:manifestId
-// Returns the full C2PA Manifest Store (or only the active manifest if requested).
-router.get('/manifests/:manifestId', requireAuth(), async (req: Request, res: Response) => {
-  try {
-    const entry = await db.getManifest(req.params.manifestId);
-    if (!entry) {
-      return res.status(404).json({ error: 'C2PA Manifest not found' });
+export function createFetchRouter(deps: FetchRouterDeps): Router {
+  const { dataStore, auth, receiptSecret } = deps;
+  const router = express.Router();
+
+  function verifyProof(manifestId: string, proof: string | undefined): boolean {
+    if (!proof) return false;
+    const expected = crypto
+      .createHmac('sha256', receiptSecret)
+      .update(manifestId)
+      .digest('base64url');
+    // Constant-time comparison to prevent timing attacks
+    try {
+      return crypto.timingSafeEqual(Buffer.from(proof), Buffer.from(expected));
+    } catch {
+      return false;
     }
-
-    // In a real implementation with returnActiveManifest=true you would parse
-    // the CBOR-encoded C2PA Manifest Store and return only the active manifest.
-    // Here we return the full blob regardless, as parsing requires a C2PA library.
-    res.set('Content-Type', 'application/c2pa');
-    return res.send(entry.data);
-  } catch {
-    return res.status(500).json({ error: 'Service failure' });
   }
-});
 
-// GET /manifests/:manifestId/receipts  — fetch the stored receipt + verification status
-router.get(
-  '/manifests/:manifestId/receipts',
-  requireAuth(),
-  async (req: Request, res: Response) => {
+  // GET /manifests/:manifestId
+  // Returns the full C2PA Manifest Store (or only the active manifest if requested).
+  router.get('/manifests/:manifestId', auth, async (req: Request, res: Response) => {
+    try {
+      const entry = await dataStore.getManifest(req.params.manifestId);
+      if (!entry) {
+        return res.status(404).json({ error: 'C2PA Manifest not found' });
+      }
+
+      // In a real implementation with returnActiveManifest=true you would parse
+      // the CBOR-encoded C2PA Manifest Store and return only the active manifest.
+      // Here we return the full blob regardless, as parsing requires a C2PA library.
+      res.set('Content-Type', 'application/c2pa');
+      return res.send(entry.data);
+    } catch {
+      return res.status(500).json({ error: 'Service failure' });
+    }
+  });
+
+  // GET /manifests/:manifestId/receipts  — fetch the stored receipt + verification status
+  router.get('/manifests/:manifestId/receipts', auth, async (req: Request, res: Response) => {
     const { manifestId } = req.params;
     try {
-      if (!(await db.manifestExists(manifestId))) {
+      if (!(await dataStore.manifestExists(manifestId))) {
         return res.status(404).json({ error: 'C2PA Manifest Store or receipt not found' });
       }
 
-      const receipt = await db.getReceipt(manifestId);
+      const receipt = await dataStore.getReceipt(manifestId);
       if (!receipt) {
         return res.status(404).json({ error: 'C2PA Manifest Store or receipt not found' });
       }
@@ -61,14 +63,10 @@ router.get(
     } catch {
       return res.status(500).json({ error: 'Service failure' });
     }
-  },
-);
+  });
 
-// POST /manifests/:manifestId/receipts  — verify a caller-supplied receipt
-router.post(
-  '/manifests/:manifestId/receipts',
-  requireAuth(),
-  async (req: Request, res: Response) => {
+  // POST /manifests/:manifestId/receipts  — verify a caller-supplied receipt
+  router.post('/manifests/:manifestId/receipts', auth, async (req: Request, res: Response) => {
     const { manifestId } = req.params;
     const receipt = req.body as Receipt | undefined;
 
@@ -77,7 +75,7 @@ router.post(
     }
 
     try {
-      if (!(await db.manifestExists(manifestId))) {
+      if (!(await dataStore.manifestExists(manifestId))) {
         return res.status(404).json({ error: 'C2PA Manifest not found' });
       }
       if (receipt.repository?.manifestId !== manifestId) {
@@ -97,7 +95,7 @@ router.post(
     } catch {
       return res.status(500).json({ error: 'Service failure' });
     }
-  },
-);
+  });
 
-export default router;
+  return router;
+}

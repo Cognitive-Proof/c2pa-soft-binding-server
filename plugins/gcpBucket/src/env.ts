@@ -18,9 +18,6 @@ function parseOptionalJson(name: string): object | undefined {
 }
 
 export const env = {
-  NODE_ENV: process.env.NODE_ENV ?? 'development',
-  GCP_PROJECT_ID: requireStr('GCP_PROJECT_ID'),
-  MONGO_DB_URI: requireStr('MONGO_DB_URI'),
   DATA_BUCKET_NAME: requireStr('DATA_BUCKET_NAME'),
   PUBLIC_BUCKET_NAME: requireStr('PUBLIC_BUCKET_NAME'),
   GOOGLE_BUCKET_CREDENTIAL: parseOptionalJson('GOOGLE_BUCKET_CREDENTIAL'),
