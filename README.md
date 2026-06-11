@@ -88,7 +88,7 @@ c2pa-soft-binding-server/
 ├── .env.example
 ├── src/
 │   ├── index.ts              # Library entry point — exports createServer() and shared types
-│   ├── cli.ts                # Standalone entry point (bin script / Docker CMD)
+│   ├── cli.ts                # Standalone entry point (bin script)
 │   ├── config.ts             # SoftBindingServerOptions type + resolveConfig() (options with env-var fallbacks)
 │   ├── store.ts               # loadDataStore() — resolves a DataStorePlugin instance or package name
 │   ├── objectStore.ts          # loadObjectStore() — resolves an ObjectStorePlugin instance or package name
@@ -125,7 +125,7 @@ Exports `createServer(options?)`, which resolves configuration, loads the data s
 
 #### `src/cli.ts` — standalone entry point
 
-The `bin` script (and Docker `CMD`). Loads `.env`, calls `createServer()` with no overrides (so everything falls back to environment variables), and calls `app.listen(PORT)`.
+The `bin` script. Loads `.env`, calls `createServer()` with no overrides (so everything falls back to environment variables), and calls `app.listen(PORT)`.
 
 #### `src/config.ts` — configuration
 
@@ -214,7 +214,7 @@ The receipt structure follows the `org.c2pa.manifest-receipt` JSON-LD schema def
 
 ## Getting Started
 
-Run this project standalone (e.g. via Docker, or as a cloned repo) when you want a ready-to-go server controlled entirely by environment variables. If you want to embed the API into your own Express app or configure it programmatically, see [Using as a Library](#using-as-a-library).
+Run this project standalone (e.g. as a cloned repo) when you want a ready-to-go server controlled entirely by environment variables. If you want to embed the API into your own Express app or configure it programmatically, see [Using as a Library](#using-as-a-library).
 
 ### Prerequisites
 
