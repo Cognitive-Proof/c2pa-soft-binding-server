@@ -1,0 +1,25 @@
+{
+  "name": "@cognitiveproof/softbinding-api-plugin-vsmark",
+  "version": "1.0.0",
+  "description": "Variation-selector text watermarking soft binding extractor for the C2PA Soft Binding Resolution API server",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.3.3"
+  }
+}

@@ -131,7 +131,7 @@ async function deleteObjectsOlderThan(
   const cutoff = Date.now() - maxAgeMs;
   const [files] = await bucket.getFiles();
 
-  const filesToDelete = files.filter(file => {
+  const filesToDelete = files.filter((file) => {
     const createdAt = file.metadata.timeCreated;
     if (!createdAt) return false;
 
@@ -139,7 +139,7 @@ async function deleteObjectsOlderThan(
   });
 
   await Promise.all(
-    filesToDelete.map(async file => {
+    filesToDelete.map(async (file) => {
       try {
         await file.delete();
       } catch (error) {
@@ -150,7 +150,7 @@ async function deleteObjectsOlderThan(
 
   return {
     deletedCount: filesToDelete.length,
-    deletedKeys: filesToDelete.map(file => file.name),
+    deletedKeys: filesToDelete.map((file) => file.name),
   };
 }
 
@@ -170,14 +170,14 @@ async function getPublicUrl(key: string): Promise<string | null> {
 
 const gcpBucketObjectStore: ObjectStorePlugin = {
   saveData: (key, data, contentType) => saveObject(key, data, buckets.data, contentType),
-  loadData: key => loadObject(key, buckets.data),
+  loadData: (key) => loadObject(key, buckets.data),
   createDataLink: (key, expires) => createObjectLink(key, buckets.data, expires),
-  deleteData: key => deleteObject(key, buckets.data),
-  deleteDataOlderThan: maxAgeMs => deleteObjectsOlderThan(buckets.data, maxAgeMs),
+  deleteData: (key) => deleteObject(key, buckets.data),
+  deleteDataOlderThan: (maxAgeMs) => deleteObjectsOlderThan(buckets.data, maxAgeMs),
   savePublicData: (key, data, contentType) => saveObject(key, data, buckets.public, contentType),
-  loadPublicData: key => loadObject(key, buckets.public),
+  loadPublicData: (key) => loadObject(key, buckets.public),
   getPublicUrl,
-  deletePublicData: key => deleteObject(key, buckets.public),
+  deletePublicData: (key) => deleteObject(key, buckets.public),
 };
 
 export default gcpBucketObjectStore;

@@ -1,9 +1,9 @@
-name: "Development deployment"
+name: 'Development deployment'
 
 on:
   push:
     branches:
-      - "development"
+      - 'development'
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: 'npm'
       - run: npm ci
       - run: npm run typecheck
         env:

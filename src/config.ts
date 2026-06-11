@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { RequestHandler } from 'express';
 import type { HelmetOptions } from 'helmet';
+import type { Options as RateLimitOptions, Store as RateLimitStore } from 'express-rate-limit';
 import type {
   DataStorePlugin,
   ObjectStorePlugin,
@@ -47,6 +48,20 @@ export interface SoftBindingServerOptions {
    * with helmet's defaults.
    */
   helmet?: HelmetOptions | false;
+  /**
+   * Rate limiting (via `express-rate-limit`) applied to all `/v1` routes. Pass
+   * `false` to disable, or a `Partial<RateLimitOptions>` to customize (e.g.
+   * `windowMs`/`limit`). Default: 100 requests per 15 minutes per IP.
+   */
+  rateLimit?: Partial<RateLimitOptions> | false;
+  /**
+   * A `Store` instance (e.g. from `rate-limit-redis`), or the name of an npm
+   * package implementing a `RateLimitStorePlugin` (e.g.
+   * `@cognitiveproof/softbinding-api-plugin-redis-rate-limit`), used to share
+   * rate limit counters across server instances. Default: RATELIMIT_STORE_PLUGIN
+   * env var, else express-rate-limit's default in-memory store.
+   */
+  rateLimitStore?: RateLimitStore | string;
 }
 
 export interface ResolvedConfig {
@@ -56,6 +71,7 @@ export interface ResolvedConfig {
   maxReferenceSize: number;
   docs: boolean;
   helmet: HelmetOptions | false;
+  rateLimit: Partial<RateLimitOptions> | false;
 }
 
 export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedConfig {
@@ -63,11 +79,20 @@ export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedC
     repoUri: options.repoUri ?? process.env.REPO_URI ?? 'http://localhost:3000',
     receiptSecret:
       options.receiptSecret ?? process.env.RECEIPT_SECRET ?? crypto.randomBytes(32).toString('hex'),
-    maxUploadSize:
-      options.maxUploadSize ?? parseInt(process.env.MAX_UPLOAD_SIZE ?? '52428800', 10),
+    maxUploadSize: options.maxUploadSize ?? parseInt(process.env.MAX_UPLOAD_SIZE ?? '52428800', 10),
     maxReferenceSize:
       options.maxReferenceSize ?? parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10),
     docs: options.docs ?? true,
     helmet: options.helmet ?? {},
+    rateLimit:
+      options.rateLimit === false
+        ? false
+        : {
+            windowMs: 15 * 60 * 1000,
+            limit: 100,
+            standardHeaders: 'draft-7',
+            legacyHeaders: false,
+            ...options.rateLimit,
+          },
   };
 }

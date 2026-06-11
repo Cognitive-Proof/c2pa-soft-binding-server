@@ -5,6 +5,7 @@
 // AUTH_PLUGIN).
 
 import type { RequestHandler } from 'express';
+import type { Store as RateLimitStore } from 'express-rate-limit';
 
 export interface Receipt {
   '@context': { c2pa: string; receipt: string };
@@ -90,3 +91,20 @@ export interface Logger {
  * to any destination in any format.
  */
 export type LoggerPlugin<TConfig = unknown> = (config: TConfig) => Logger;
+
+/**
+ * A RateLimitStorePlugin builds an express-rate-limit `Store`, given an
+ * implementation-specific config value (e.g. a Redis connection string).
+ * Used to share rate limit counters across multiple server instances; if
+ * not configured, express-rate-limit's default in-memory store is used.
+ */
+export type RateLimitStorePlugin<TConfig = unknown> = (config: TConfig) => RateLimitStore;
+
+/**
+ * An Extractor recovers a soft binding value (a watermark or content
+ * fingerprint) from an asset, returning the binding value or `null` if none
+ * is found. Registered with `createServer({ extractors })`, keyed by an
+ * algorithm name from the C2PA soft binding algorithm list:
+ * https://github.com/c2pa-org/softbinding-algorithm-list
+ */
+export type Extractor = (buffer: Buffer, mimeType: string) => Promise<string | null>;

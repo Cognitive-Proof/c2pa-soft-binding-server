@@ -13,12 +13,12 @@ export function loadDataStore(plugin?: DataStorePlugin | string): DataStorePlugi
     plugin ?? process.env.DATASTORE_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-mongodb';
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require(packageName) as { default: DataStorePlugin }).default;
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
       throw new Error(
         `DataStore plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`,
+        { cause: err },
       );
     }
     throw err;

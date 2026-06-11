@@ -28,7 +28,7 @@ describe('createJwtAuthMiddleware', () => {
       res.end(JSON.stringify({ keys: [publicJwk] }));
     });
 
-    await new Promise<void>(resolve => jwksServer.listen(0, resolve));
+    await new Promise<void>((resolve) => jwksServer.listen(0, resolve));
     const { port } = jwksServer.address() as AddressInfo;
     jwksUri = `http://127.0.0.1:${port}/jwks.json`;
 
@@ -41,7 +41,9 @@ describe('createJwtAuthMiddleware', () => {
     jwksServer.close();
   });
 
-  function signToken(overrides: { issuer?: string; audience?: string; expSecondsFromNow?: number } = {}) {
+  function signToken(
+    overrides: { issuer?: string; audience?: string; expSecondsFromNow?: number } = {},
+  ) {
     const { issuer = ISSUER, audience = AUDIENCE, expSecondsFromNow = 3600 } = overrides;
     return new SignJWT({})
       .setProtectedHeader({ alg: 'RS256', kid: KID })

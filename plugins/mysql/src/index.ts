@@ -17,11 +17,10 @@ const mysqlDataStore: DataStorePlugin = {
   async addManifest(data, contentType) {
     await ready();
     const manifestId = `urn:c2pa:${uuidv4()}`;
-    await pool.query('INSERT INTO manifests (id, data, content_type, receipt) VALUES (?, ?, ?, NULL)', [
-      manifestId,
-      data,
-      contentType,
-    ]);
+    await pool.query(
+      'INSERT INTO manifests (id, data, content_type, receipt) VALUES (?, ?, ?, NULL)',
+      [manifestId, data, contentType],
+    );
     return manifestId;
   },
 
@@ -42,23 +41,27 @@ const mysqlDataStore: DataStorePlugin = {
 
   async manifestExists(manifestId) {
     await ready();
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT 1 FROM manifests WHERE id = ? LIMIT 1', [
-      manifestId,
-    ]);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT 1 FROM manifests WHERE id = ? LIMIT 1',
+      [manifestId],
+    );
     return rows.length > 0;
   },
 
   async deleteManifest(manifestId) {
     await ready();
-    const [result] = await pool.query<ResultSetHeader>('DELETE FROM manifests WHERE id = ?', [manifestId]);
+    const [result] = await pool.query<ResultSetHeader>('DELETE FROM manifests WHERE id = ?', [
+      manifestId,
+    ]);
     return result.affectedRows > 0;
   },
 
   async createBinding(bindingValue, manifestId) {
     await ready();
-    const [existing] = await pool.query<RowDataPacket[]>('SELECT 1 FROM manifests WHERE id = ? LIMIT 1', [
-      manifestId,
-    ]);
+    const [existing] = await pool.query<RowDataPacket[]>(
+      'SELECT 1 FROM manifests WHERE id = ? LIMIT 1',
+      [manifestId],
+    );
     if (existing.length === 0) return false;
 
     await pool.query('INSERT IGNORE INTO bindings (binding_value, manifest_id) VALUES (?, ?)', [
@@ -115,15 +118,15 @@ const mysqlDataStore: DataStorePlugin = {
       'SELECT manifest_id FROM bindings WHERE binding_value = ? ORDER BY id ASC LIMIT ?',
       [bindingValue, maxResults],
     );
-    return rows.map(row => ({ manifestId: row.manifest_id, similarityScore: 100 }));
+    return rows.map((row) => ({ manifestId: row.manifest_id, similarityScore: 100 }));
   },
 
   async setReceipt(manifestId, receipt) {
     await ready();
-    const [result] = await pool.query<ResultSetHeader>('UPDATE manifests SET receipt = ? WHERE id = ?', [
-      JSON.stringify(receipt),
-      manifestId,
-    ]);
+    const [result] = await pool.query<ResultSetHeader>(
+      'UPDATE manifests SET receipt = ? WHERE id = ?',
+      [JSON.stringify(receipt), manifestId],
+    );
     return result.affectedRows > 0;
   },
 

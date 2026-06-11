@@ -50,11 +50,15 @@ function loadAuthPlugin(): AuthPlugin<string> {
     process.env.AUTH_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-google-auth';
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require(packageName) as { default: AuthPlugin<string> }).default;
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
-      throw new Error(`Auth plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`);
+      throw new Error(
+        `Auth plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`,
+        {
+          cause: err,
+        },
+      );
     }
     throw err;
   }

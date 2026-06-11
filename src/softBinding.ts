@@ -17,7 +17,8 @@
 // Algorithm names must appear in the C2PA soft binding algorithm list:
 //   https://github.com/c2pa-org/softbinding-algorithm-list
 
-export type Extractor = (buffer: Buffer, mimeType: string) => Promise<string | null>;
+export type { Extractor } from '@cognitiveproof/softbinding-api-plugin-types';
+import type { Extractor } from '@cognitiveproof/softbinding-api-plugin-types';
 
 export interface SupportedAlgorithms {
   watermarks: Array<{ alg: string }>;
@@ -58,8 +59,8 @@ export function createSoftBindingRegistry(
 
   function getSupportedAlgorithms(): SupportedAlgorithms {
     return {
-      watermarks: supportedWatermarks.map(alg => ({ alg })),
-      fingerprints: supportedFingerprints.map(alg => ({ alg })),
+      watermarks: supportedWatermarks.map((alg) => ({ alg })),
+      fingerprints: supportedFingerprints.map((alg) => ({ alg })),
     };
   }
 

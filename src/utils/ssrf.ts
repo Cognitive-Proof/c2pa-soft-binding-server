@@ -20,7 +20,7 @@ const PRIVATE_RANGES = [
 ];
 
 function isPrivateIP(ip: string): boolean {
-  return PRIVATE_RANGES.some(r => r.test(ip));
+  return PRIVATE_RANGES.some((r) => r.test(ip));
 }
 
 export async function validateReferenceUrl(urlStr: string): Promise<void> {

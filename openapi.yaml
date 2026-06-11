@@ -7,7 +7,7 @@ info:
     Allows clients to store C2PA Manifest Stores, associate them with soft
     binding values (watermarks or fingerprints), and recover those manifests
     from a previously detected binding.
-  version: "2.4"
+  version: '2.4'
 servers:
   - url: /v1
 
@@ -202,7 +202,7 @@ paths:
                 properties:
                   manifestId:
                     type: string
-                    example: "urn:c2pa:12345678-1234-1234-1234-123456789abc"
+                    example: 'urn:c2pa:12345678-1234-1234-1234-123456789abc'
                   receipt:
                     $ref: '#/components/schemas/Receipt'
         '400':

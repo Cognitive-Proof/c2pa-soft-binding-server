@@ -15,11 +15,9 @@ interface BindingRow {
 const sqliteDataStore: DataStorePlugin = {
   async addManifest(data, contentType) {
     const manifestId = `urn:c2pa:${uuidv4()}`;
-    db.prepare('INSERT INTO manifests (id, data, content_type, receipt) VALUES (?, ?, ?, NULL)').run(
-      manifestId,
-      data,
-      contentType,
-    );
+    db.prepare(
+      'INSERT INTO manifests (id, data, content_type, receipt) VALUES (?, ?, ?, NULL)',
+    ).run(manifestId, data, contentType);
     return manifestId;
   },
 
@@ -56,7 +54,9 @@ const sqliteDataStore: DataStorePlugin = {
 
   // PUT semantics: replace all existing associations for this binding value
   async updateBinding(bindingValue, manifestId) {
-    const exists = db.prepare('SELECT 1 FROM bindings WHERE binding_value = ? LIMIT 1').get(bindingValue);
+    const exists = db
+      .prepare('SELECT 1 FROM bindings WHERE binding_value = ? LIMIT 1')
+      .get(bindingValue);
     if (!exists) return false;
     if (!(await sqliteDataStore.manifestExists(manifestId))) return false;
 
@@ -72,7 +72,7 @@ const sqliteDataStore: DataStorePlugin = {
     const rows = db
       .prepare('SELECT manifest_id FROM bindings WHERE binding_value = ? ORDER BY id ASC LIMIT ?')
       .all(bindingValue, maxResults) as BindingRow[];
-    return rows.map(row => ({ manifestId: row.manifest_id, similarityScore: 100 }));
+    return rows.map((row) => ({ manifestId: row.manifest_id, similarityScore: 100 }));
   },
 
   async setReceipt(manifestId, receipt) {

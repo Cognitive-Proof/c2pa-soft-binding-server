@@ -17,10 +17,7 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
   const c2paBody = express.raw({ type: 'application/c2pa', limit: '100mb' });
 
   function buildReceipt(manifestId: string): Receipt {
-    const proof = crypto
-      .createHmac('sha256', receiptSecret)
-      .update(manifestId)
-      .digest('base64url');
+    const proof = crypto.createHmac('sha256', receiptSecret).update(manifestId).digest('base64url');
 
     return {
       '@context': {

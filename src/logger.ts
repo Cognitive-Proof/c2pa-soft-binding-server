@@ -11,7 +11,12 @@ import type { Logger, LoggerPlugin } from '@cognitiveproof/softbinding-api-plugi
  * and stderr (error) — no extra dependencies required.
  */
 export function createConsoleLogger(bindings: Record<string, unknown> = {}): Logger {
-  const write = (stream: NodeJS.WriteStream, level: string, msg: string, meta?: Record<string, unknown>) => {
+  const write = (
+    stream: NodeJS.WriteStream,
+    level: string,
+    msg: string,
+    meta?: Record<string, unknown>,
+  ) => {
     stream.write(
       `${JSON.stringify({ level, time: new Date().toISOString(), msg, ...bindings, ...meta })}\n`,
     );
@@ -28,11 +33,15 @@ export function createConsoleLogger(bindings: Record<string, unknown> = {}): Log
 
 function loadLoggerPlugin(packageName: string): LoggerPlugin<unknown> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require(packageName) as { default: LoggerPlugin<unknown> }).default;
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
-      throw new Error(`Logger plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`);
+      throw new Error(
+        `Logger plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`,
+        {
+          cause: err,
+        },
+      );
     }
     throw err;
   }

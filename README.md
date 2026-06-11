@@ -30,12 +30,12 @@ Consumer detects a watermark in an image
 
 ### Why does this matter?
 
-| Scenario | Without soft binding | With soft binding |
-|---|---|---|
-| Social platform strips metadata | Provenance lost | Manifest recovered via watermark |
-| Malicious manifest substitution | Cannot detect | Compare embedded vs. recovered manifest |
-| Legacy pipeline strips metadata | Gap in provenance chain | Watermark bridges the gap |
-| AI-generated content | GenAI label lost | Label recovered from repository |
+| Scenario                        | Without soft binding    | With soft binding                       |
+| ------------------------------- | ----------------------- | --------------------------------------- |
+| Social platform strips metadata | Provenance lost         | Manifest recovered via watermark        |
+| Malicious manifest substitution | Cannot detect           | Compare embedded vs. recovered manifest |
+| Legacy pipeline strips metadata | Gap in provenance chain | Watermark bridges the gap               |
+| AI-generated content            | GenAI label lost        | Label recovered from repository         |
 
 ---
 
@@ -45,35 +45,35 @@ The server implements all four route groups defined in the specification, mounte
 
 ### Query — find manifests from a soft binding
 
-| Method | Route | Description |
-|---|---|---|
-| `GET` | `/v1/matches/byBinding` | Look up manifests by a pre-computed binding value in the query string |
-| `POST` | `/v1/matches/byBinding` | Same, but accepts a large binding value in a JSON body |
-| `POST` | `/v1/matches/byContent` | Upload a raw asset; the server extracts the soft binding and searches |
-| `POST` | `/v1/matches/byReference` | Provide an HTTPS URL; the server downloads the asset and searches |
+| Method | Route                     | Description                                                           |
+| ------ | ------------------------- | --------------------------------------------------------------------- |
+| `GET`  | `/v1/matches/byBinding`   | Look up manifests by a pre-computed binding value in the query string |
+| `POST` | `/v1/matches/byBinding`   | Same, but accepts a large binding value in a JSON body                |
+| `POST` | `/v1/matches/byContent`   | Upload a raw asset; the server extracts the soft binding and searches |
+| `POST` | `/v1/matches/byReference` | Provide an HTTPS URL; the server downloads the asset and searches     |
 
 ### Store — ingest manifests and manage bindings
 
-| Method | Route | Description |
-|---|---|---|
-| `POST` | `/v1/manifests` | Ingest a C2PA Manifest Store; returns the manifest ID and optionally a receipt |
-| `POST` | `/v1/bindings` | Associate a soft binding value with a stored manifest |
-| `PUT` | `/v1/bindings` | Update the manifest an existing binding points to |
-| `DELETE` | `/v1/manifests/:manifestId` | Remove a manifest and its associated bindings |
+| Method   | Route                       | Description                                                                    |
+| -------- | --------------------------- | ------------------------------------------------------------------------------ |
+| `POST`   | `/v1/manifests`             | Ingest a C2PA Manifest Store; returns the manifest ID and optionally a receipt |
+| `POST`   | `/v1/bindings`              | Associate a soft binding value with a stored manifest                          |
+| `PUT`    | `/v1/bindings`              | Update the manifest an existing binding points to                              |
+| `DELETE` | `/v1/manifests/:manifestId` | Remove a manifest and its associated bindings                                  |
 
 ### Fetch — retrieve manifests and receipts
 
-| Method | Route | Description |
-|---|---|---|
-| `GET` | `/v1/manifests/:manifestId` | Retrieve a stored C2PA Manifest Store by ID |
-| `GET` | `/v1/manifests/:manifestId/receipts` | Retrieve the repository receipt for a manifest |
+| Method | Route                                | Description                                                |
+| ------ | ------------------------------------ | ---------------------------------------------------------- |
+| `GET`  | `/v1/manifests/:manifestId`          | Retrieve a stored C2PA Manifest Store by ID                |
+| `GET`  | `/v1/manifests/:manifestId/receipts` | Retrieve the repository receipt for a manifest             |
 | `POST` | `/v1/manifests/:manifestId/receipts` | Verify a caller-supplied receipt against a stored manifest |
 
 ### Service — capability discovery
 
-| Method | Route | Description |
-|---|---|---|
-| `GET` | `/v1/services/supportedAlgorithms` | List the watermark and fingerprint algorithms this instance supports |
+| Method | Route                              | Description                                                          |
+| ------ | ---------------------------------- | -------------------------------------------------------------------- |
+| `GET`  | `/v1/services/supportedAlgorithms` | List the watermark and fingerprint algorithms this instance supports |
 
 ---
 
@@ -94,6 +94,7 @@ c2pa-soft-binding-server/
 │   ├── objectStore.ts          # loadObjectStore() — resolves an ObjectStorePlugin instance or package name
 │   ├── auth.ts                 # resolveAuthMiddleware() — pluggable JWT/custom auth, defaults to Google Identity Platform
 │   ├── logger.ts                # resolveLogger() — pluggable structured logging, defaults to a console JSON logger
+│   ├── rateLimit.ts              # resolveRateLimitStore() — pluggable rate limit store, defaults to in-memory
 │   ├── softBinding.ts          # createSoftBindingRegistry(extractors) — soft binding extractor registry
 │   ├── utils/
 │   │   └── ssrf.ts            # SSRF protection for the byReference endpoint
@@ -111,14 +112,16 @@ c2pa-soft-binding-server/
     ├── gcpBucket/             # @cognitiveproof/softbinding-api-plugin-gcp-bucket — ObjectStore plugin
     ├── awsBucket/             # @cognitiveproof/softbinding-api-plugin-aws-bucket — ObjectStore plugin
     ├── google-auth/           # @cognitiveproof/softbinding-api-plugin-google-auth — AuthPlugin (default)
-    └── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
+    ├── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
+    ├── redis-rate-limit/      # @cognitiveproof/softbinding-api-plugin-redis-rate-limit — RateLimitStorePlugin
+    └── vsmark/                # @cognitiveproof/softbinding-api-plugin-vsmark — Extractor (text watermark)
 ```
 
 ### Layer responsibilities
 
 #### `src/index.ts` — library entry point / composition root
 
-Exports `createServer(options?)`, which resolves configuration, loads the data store plugin, builds the soft binding registry and auth middleware, and wires everything into an `express.Express` app: `helmet()` security headers (unless `helmet: false`), request logging, global JSON body parser, `/docs` + `/v1/openapi.json` (unless `docs: false`), the four route routers under `/v1`, and a 404 + error handler. The returned app is not listening — embed it in another app or call `.listen()` yourself.
+Exports `createServer(options?)`, which resolves configuration, loads the data store plugin, builds the soft binding registry and auth middleware, and wires everything into an `express.Express` app: `helmet()` security headers (unless `helmet: false`), request logging, global JSON body parser, `/docs` + `/v1/openapi.json` (unless `docs: false`), rate limiting on `/v1` (unless `rateLimit: false`), the four route routers under `/v1`, and a 404 + error handler. The returned app is not listening — embed it in another app or call `.listen()` yourself.
 
 #### `src/cli.ts` — standalone entry point
 
@@ -130,7 +133,7 @@ Defines `SoftBindingServerOptions` (the `createServer()` options type) and `reso
 
 #### `src/store.ts` and `src/objectStore.ts` — pluggable data layer
 
-`loadDataStore(plugin?)` and `loadObjectStore(plugin?)` resolve a `DataStorePlugin` / `ObjectStorePlugin`: pass an instance directly, pass an npm package name to `require()`, or omit it to fall back to `DATASTORE_PLUGIN`/`OBJECTSTORE_PLUGIN` env vars and then the bundled defaults (see [Storage Plugins](#storage-plugins) below). `createServer()` calls `loadDataStore()` and injects the result into the route factories — routes have no direct knowledge of how or where data is persisted. `loadObjectStore()` is exported for custom routes but isn't wired into `createServer()` since no bundled route uses blob storage yet.
+`loadDataStore(plugin?)` and `loadObjectStore(plugin?)` resolve a `DataStorePlugin` / `ObjectStorePlugin`: pass an instance directly, pass an npm package name to `require()`, or omit it to fall back to `DATASTORE_PLUGIN`/`OBJECTSTORE_PLUGIN` env vars and then the bundled defaults (see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins) below). `createServer()` calls `loadDataStore()` and injects the result into the route factories — routes have no direct knowledge of how or where data is persisted. `loadObjectStore()` is exported for custom routes but isn't wired into `createServer()` since no bundled route uses blob storage yet.
 
 #### `src/auth.ts` — authentication middleware
 
@@ -157,6 +160,16 @@ The spec mandates OAuth2 client credentials flow with the scope `fetch:manifests
 #### Security headers (`helmet`)
 
 `createServer()` mounts [`helmet()`](https://helmetjs.github.io/) as the first middleware, which sets a baseline of security-related HTTP response headers (`X-Content-Type-Options`, `X-DNS-Prefetch-Control`, `Strict-Transport-Security`, removes `X-Powered-By`, etc.). Pass `helmet: false` to disable it entirely, or `helmet: { ...HelmetOptions }` to customize (e.g. configure a Content-Security-Policy). Default: enabled with helmet's defaults.
+
+#### `src/rateLimit.ts` — rate limiting
+
+`createServer()` mounts [`express-rate-limit`](https://express-rate-limit.mintlify.app/) on all `/v1` routes (not `/`, `/docs`, or `/v1/openapi.json`), returning `429 Too Many Requests` once a client exceeds the limit. Default: 100 requests per 15 minutes per IP; pass `rateLimit: { ...RateLimitOptions }` to customize (`windowMs`, `limit`, `keyGenerator`, etc.) or `rateLimit: false` to disable.
+
+By default the limiter uses express-rate-limit's in-memory store, which is **per-process** — each server instance/replica tracks its own counters. `resolveRateLimitStore(rateLimitStore)` resolves a shared `Store` instead, given the `rateLimitStore` option:
+
+- **`rateLimitStore` is a `Store` instance** — used as-is (e.g. constructed with `rate-limit-redis` directly).
+- **`rateLimitStore` is a package name, or `RATELIMIT_STORE_PLUGIN` is set** — loads an npm package implementing `RateLimitStorePlugin` (e.g. the optional `@cognitiveproof/softbinding-api-plugin-redis-rate-limit`).
+- **`rateLimitStore` is omitted and `RATELIMIT_STORE_PLUGIN` is unset** — uses express-rate-limit's default in-memory store.
 
 #### `src/softBinding.ts` — extractor registry
 
@@ -229,21 +242,22 @@ npm run dev      # development with auto-reload (requires nodemon)
 
 `src/cli.ts` calls `createServer()` with no overrides, so every option falls back to the environment variables below (see [`SoftBindingServerOptions`](src/config.ts) for the corresponding option name):
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3000` | HTTP port to listen on (CLI only — not a `createServer()` option) |
-| `GCP_PROJECT_ID` | — | Google Cloud project ID; used by the default Google Identity Platform auth (`gcpProjectId`) — not needed if `auth` is set |
-| `REPO_URI` | `http://localhost:3000` | Public base URI of this repository, used in receipts (`repoUri`) |
-| `RECEIPT_SECRET` | random | Secret for signing receipts — must be set for receipts to survive restart (`receiptSecret`) |
-| `MAX_UPLOAD_SIZE` | `52428800` | Max direct upload size in bytes (50 MB) (`maxUploadSize`) |
-| `MAX_REFERENCE_SIZE` | `104857600` | Max download size for byReference in bytes (100 MB) (`maxReferenceSize`) |
-| `DATASTORE_PLUGIN` | `@cognitiveproof/softbinding-api-plugin-mongodb` | npm package implementing `DataStorePlugin` (`dataStore`) |
-| `OBJECTSTORE_PLUGIN` | `@cognitiveproof/softbinding-api-plugin-gcp-bucket` | npm package implementing `ObjectStorePlugin` (`objectStore`) |
-| `AUTH_PLUGIN` | `@cognitiveproof/softbinding-api-plugin-google-auth` | npm package implementing `AuthPlugin<string>`, used when `auth` is not set |
-| `LOGGER_PLUGIN` | — | npm package implementing `LoggerPlugin`, used when `logger` is not set (default: built-in console JSON logger) |
-| `SKIP_ENV_VALIDATION` | — | Set to skip the `gcpProjectId`/`auth` requirement (and per-plugin env validation) — useful for tests |
+| Variable                 | Default                                              | Description                                                                                                               |
+| ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                   | `3000`                                               | HTTP port to listen on (CLI only — not a `createServer()` option)                                                         |
+| `GCP_PROJECT_ID`         | —                                                    | Google Cloud project ID; used by the default Google Identity Platform auth (`gcpProjectId`) — not needed if `auth` is set |
+| `REPO_URI`               | `http://localhost:3000`                              | Public base URI of this repository, used in receipts (`repoUri`)                                                          |
+| `RECEIPT_SECRET`         | random                                               | Secret for signing receipts — must be set for receipts to survive restart (`receiptSecret`)                               |
+| `MAX_UPLOAD_SIZE`        | `52428800`                                           | Max direct upload size in bytes (50 MB) (`maxUploadSize`)                                                                 |
+| `MAX_REFERENCE_SIZE`     | `104857600`                                          | Max download size for byReference in bytes (100 MB) (`maxReferenceSize`)                                                  |
+| `DATASTORE_PLUGIN`       | `@cognitiveproof/softbinding-api-plugin-mongodb`     | npm package implementing `DataStorePlugin` (`dataStore`)                                                                  |
+| `OBJECTSTORE_PLUGIN`     | `@cognitiveproof/softbinding-api-plugin-gcp-bucket`  | npm package implementing `ObjectStorePlugin` (`objectStore`)                                                              |
+| `AUTH_PLUGIN`            | `@cognitiveproof/softbinding-api-plugin-google-auth` | npm package implementing `AuthPlugin<string>`, used when `auth` is not set                                                |
+| `LOGGER_PLUGIN`          | —                                                    | npm package implementing `LoggerPlugin`, used when `logger` is not set (default: built-in console JSON logger)            |
+| `RATELIMIT_STORE_PLUGIN` | —                                                    | npm package implementing `RateLimitStorePlugin`, used when `rateLimitStore` is not set (default: in-memory store)         |
+| `SKIP_ENV_VALIDATION`    | —                                                    | Set to skip the `gcpProjectId`/`auth` requirement (and per-plugin env validation) — useful for tests                      |
 
-Each storage plugin reads its own additional environment variables — see [Storage Plugins](#storage-plugins).
+Each storage plugin reads its own additional environment variables — see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins).
 
 ---
 
@@ -283,19 +297,21 @@ c2paApp.listen(3000);
 
 `SoftBindingServerOptions` (all optional, each falls back to an environment variable — see the table above):
 
-| Option | Type |
-|---|---|
-| `repoUri` | `string` |
-| `receiptSecret` | `string` |
-| `maxUploadSize` / `maxReferenceSize` | `number` |
-| `dataStore` | `DataStorePlugin \| string` |
-| `objectStore` | `ObjectStorePlugin \| string` |
-| `gcpProjectId` | `string` — used by the default Google Identity Platform auth |
-| `auth` | `RequestHandler \| { issuer, audience, jwksUri }` — overrides the default auth (see below) |
-| `extractors` | `Record<string, Extractor>` |
-| `docs` | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json` |
-| `logger` | `Logger \| string` — overrides the default console JSON logger (see below) |
-| `helmet` | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults) |
+| Option                               | Type                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `repoUri`                            | `string`                                                                                                                  |
+| `receiptSecret`                      | `string`                                                                                                                  |
+| `maxUploadSize` / `maxReferenceSize` | `number`                                                                                                                  |
+| `dataStore`                          | `DataStorePlugin \| string`                                                                                               |
+| `objectStore`                        | `ObjectStorePlugin \| string`                                                                                             |
+| `gcpProjectId`                       | `string` — used by the default Google Identity Platform auth                                                              |
+| `auth`                               | `RequestHandler \| { issuer, audience, jwksUri }` — overrides the default auth (see below)                                |
+| `extractors`                         | `Record<string, Extractor>`                                                                                               |
+| `docs`                               | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json`                                                        |
+| `logger`                             | `Logger \| string` — overrides the default console JSON logger (see below)                                                |
+| `helmet`                             | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults)   |
+| `rateLimit`                          | `Partial<RateLimitOptions> \| false` — customizes or disables rate limiting on `/v1` (default: 100 requests/15min per IP) |
+| `rateLimitStore`                     | `Store \| string` — shared rate limit store (e.g. Redis) for multi-instance deployments                                   |
 
 By default, `/v1` routes require a Google Identity Platform JWT for `gcpProjectId`. To use a different identity provider or auth scheme, pass `auth`:
 
@@ -342,33 +358,52 @@ createServer({
 });
 ```
 
-The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, and `createConsoleLogger` helpers.
+By default, `/v1` routes are limited to 100 requests/15min per IP using an in-memory store. To customize the limit or share counters across instances via Redis, pass `rateLimit`/`rateLimitStore`:
+
+```ts
+createServer({
+  rateLimit: { windowMs: 60_000, limit: 30 }, // 30 requests/minute per IP
+  rateLimitStore: '@cognitiveproof/softbinding-api-plugin-redis-rate-limit',
+  // ...
+});
+
+// Or disable rate limiting entirely (e.g. if handled by a gateway/load balancer):
+createServer({
+  rateLimit: false,
+  // ...
+});
+```
+
+The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStorePlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, and `createConsoleLogger` helpers.
 
 ---
 
-## Storage, Auth, and Logging Plugins
+## Storage, Auth, Logging, and Rate Limit Plugins
 
-Persistence, the default authentication scheme, and logging are implemented entirely by npm packages that conform to the interfaces in [`@cognitiveproof/softbinding-api-plugin-types`](plugins/types/src/index.ts):
+Persistence, the default authentication scheme, logging, and rate limit storage are implemented entirely by npm packages that conform to the interfaces in [`@cognitiveproof/softbinding-api-plugin-types`](plugins/types/src/index.ts):
 
 - **`DataStorePlugin`** — stores C2PA Manifest Stores, soft binding associations, and receipts (`addManifest`, `getManifest`, `findByBinding`, `createBinding`, etc.)
 - **`ObjectStorePlugin`** — stores arbitrary binary blobs in a "data" bucket and a "public" bucket (`saveData`, `loadData`, `getPublicUrl`, etc.)
 - **`AuthPlugin<TConfig>`** — builds the Express middleware used to authenticate `/v1` requests when `auth` isn't passed to `createServer()`, given a config value (`gcpProjectId` for the bundled plugin)
 - **`LoggerPlugin<TConfig>`** — builds the `Logger` used for request logging and error reporting when `logger` isn't passed to `createServer()`, given an implementation-specific config value (e.g. a log level)
+- **`RateLimitStorePlugin<TConfig>`** — builds the express-rate-limit `Store` used to share rate limit counters across instances when `rateLimitStore` isn't passed to `createServer()`, given a config value (e.g. a Redis URL)
 
-`createServer()` resolves the data store plugin via `loadDataStore()` (an instance passed as `options.dataStore`, an npm package name, or `DATASTORE_PLUGIN`/the bundled default), the default auth plugin via `AUTH_PLUGIN`/the bundled default, and the logger via `resolveLogger()` (`options.logger`, `LOGGER_PLUGIN`, or the built-in console logger), injecting the results into the route factories. Route code never imports a plugin directly.
+`createServer()` resolves the data store plugin via `loadDataStore()` (an instance passed as `options.dataStore`, an npm package name, or `DATASTORE_PLUGIN`/the bundled default), the default auth plugin via `AUTH_PLUGIN`/the bundled default, the logger via `resolveLogger()` (`options.logger`, `LOGGER_PLUGIN`, or the built-in console logger), and the rate limit store via `resolveRateLimitStore()` (`options.rateLimitStore`, `RATELIMIT_STORE_PLUGIN`, or express-rate-limit's in-memory store), injecting the results into the route factories. Route code never imports a plugin directly.
 
 ### Bundled plugins
 
-| Package | Implements | Backend | Required env vars |
-|---|---|---|---|
-| `@cognitiveproof/softbinding-api-plugin-mongodb` | `DataStorePlugin` | MongoDB | `MONGO_DB_URI` |
-| `@cognitiveproof/softbinding-api-plugin-postgres` | `DataStorePlugin` | PostgreSQL | `POSTGRES_URL` |
-| `@cognitiveproof/softbinding-api-plugin-mysql` | `DataStorePlugin` | MySQL | `MYSQL_URL` |
-| `@cognitiveproof/softbinding-api-plugin-sqlite` | `DataStorePlugin` | SQLite (file or in-memory) | `SQLITE_DB_PATH` (default `./data/softbinding.sqlite`) |
-| `@cognitiveproof/softbinding-api-plugin-gcp-bucket` | `ObjectStorePlugin` | Google Cloud Storage | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `GOOGLE_BUCKET_CREDENTIAL` |
-| `@cognitiveproof/softbinding-api-plugin-aws-bucket` | `ObjectStorePlugin` | AWS S3 (or S3-compatible, e.g. MinIO/R2) | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `AWS_REGION`, `AWS_S3_ENDPOINT`, `AWS_S3_FORCE_PATH_STYLE` |
-| `@cognitiveproof/softbinding-api-plugin-google-auth` | `AuthPlugin<string>` | Google Cloud Identity Platform | `GCP_PROJECT_ID` (`gcpProjectId`) |
-| `@cognitiveproof/softbinding-api-plugin-pino-logger` | `LoggerPlugin` | [pino](https://getpino.io/) | optional `LOG_LEVEL` (default `info`) |
+| Package                                                   | Implements             | Backend                                   | Required env vars                                                                                             |
+| --------------------------------------------------------- | ---------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@cognitiveproof/softbinding-api-plugin-mongodb`          | `DataStorePlugin`      | MongoDB                                   | `MONGO_DB_URI`                                                                                                |
+| `@cognitiveproof/softbinding-api-plugin-postgres`         | `DataStorePlugin`      | PostgreSQL                                | `POSTGRES_URL`                                                                                                |
+| `@cognitiveproof/softbinding-api-plugin-mysql`            | `DataStorePlugin`      | MySQL                                     | `MYSQL_URL`                                                                                                   |
+| `@cognitiveproof/softbinding-api-plugin-sqlite`           | `DataStorePlugin`      | SQLite (file or in-memory)                | `SQLITE_DB_PATH` (default `./data/softbinding.sqlite`)                                                        |
+| `@cognitiveproof/softbinding-api-plugin-gcp-bucket`       | `ObjectStorePlugin`    | Google Cloud Storage                      | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `GOOGLE_BUCKET_CREDENTIAL`                                 |
+| `@cognitiveproof/softbinding-api-plugin-aws-bucket`       | `ObjectStorePlugin`    | AWS S3 (or S3-compatible, e.g. MinIO/R2)  | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `AWS_REGION`, `AWS_S3_ENDPOINT`, `AWS_S3_FORCE_PATH_STYLE` |
+| `@cognitiveproof/softbinding-api-plugin-google-auth`      | `AuthPlugin<string>`   | Google Cloud Identity Platform            | `GCP_PROJECT_ID` (`gcpProjectId`)                                                                             |
+| `@cognitiveproof/softbinding-api-plugin-pino-logger`      | `LoggerPlugin`         | [pino](https://getpino.io/)               | optional `LOG_LEVEL` (default `info`)                                                                         |
+| `@cognitiveproof/softbinding-api-plugin-redis-rate-limit` | `RateLimitStorePlugin` | Redis (via `rate-limit-redis`/`ioredis`)  | optional `REDIS_URL` (default `redis://localhost:6379`)                                                       |
+| `@cognitiveproof/softbinding-api-plugin-vsmark`           | `Extractor`            | Unicode variation-selector text watermark | none                                                                                                          |
 
 The SQL plugins (`postgres`, `mysql`, `sqlite`) all use the same `manifests` / `bindings` schema with a foreign key from `bindings.manifest_id` to `manifests.id` (`ON DELETE CASCADE`), and create their tables automatically on first use.
 
@@ -388,7 +423,7 @@ createServer({
 });
 ```
 
-If `loadDataStore`/`loadObjectStore`/the auth plugin loader/the logger plugin loader can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`. Note that `@cognitiveproof/softbinding-api-plugin-google-auth` is only required when relying on the default Google auth (i.e. when `auth` is not passed to `createServer()`) — passing `auth` makes it unnecessary. Likewise, `@cognitiveproof/softbinding-api-plugin-pino-logger` is only required when `logger`/`LOGGER_PLUGIN` references it — by default `createServer()` uses the built-in console logger and needs no logging plugin at all.
+If `loadDataStore`/`loadObjectStore`/the auth plugin loader/the logger plugin loader/the rate limit store plugin loader can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`. Note that `@cognitiveproof/softbinding-api-plugin-google-auth` is only required when relying on the default Google auth (i.e. when `auth` is not passed to `createServer()`) — passing `auth` makes it unnecessary. Likewise, `@cognitiveproof/softbinding-api-plugin-pino-logger` and `@cognitiveproof/softbinding-api-plugin-redis-rate-limit` are only required when `logger`/`LOGGER_PLUGIN` or `rateLimitStore`/`RATELIMIT_STORE_PLUGIN` reference them — by default `createServer()` uses the built-in console logger and an in-memory rate limit store, needing no extra plugins at all.
 
 ### Switching backends
 
@@ -408,8 +443,12 @@ A plugin package must export a default object implementing the corresponding int
 import type { DataStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 
 const plugin: DataStorePlugin = {
-  async addManifest(data, contentType) { /* ... */ },
-  async getManifest(manifestId) { /* ... */ },
+  async addManifest(data, contentType) {
+    /* ... */
+  },
+  async getManifest(manifestId) {
+    /* ... */
+  },
   // ...
 };
 
@@ -435,22 +474,48 @@ createServer({
 
 Algorithm names must match entries in the [C2PA Soft Binding Algorithm List](https://github.com/c2pa-org/softbinding-algorithm-list). Once registered the algorithm appears in `GET /services/supportedAlgorithms` and can be used with the `alg` parameter on the `byContent` and `byReference` routes.
 
+### Bundled: text watermarking via Unicode variation selectors
+
+`@cognitiveproof/softbinding-api-plugin-vsmark` is a ready-to-use `Extractor` for plain-text/HTML assets. It hides a soft binding value inside a piece of text by appending an invisible [Unicode variation selector](<https://en.wikipedia.org/wiki/Variation_Selectors_(Unicode_block)>) after each character, encoding the binding value byte-by-byte. The carrier text displays unchanged (the variation selectors are invisible to renderers) but a watermarked copy can be traced back to the original binding.
+
+```bash
+npm install @cognitiveproof/softbinding-api-plugin-vsmark
+```
+
+```ts
+import { createServer } from '@cognitiveproof/softbinding-api-server';
+import {
+  vsmarkExtractor,
+  VSMARK_ALGORITHM,
+  encode,
+} from '@cognitiveproof/softbinding-api-plugin-vsmark';
+
+createServer({
+  extractors: { [VSMARK_ALGORITHM]: vsmarkExtractor },
+});
+
+// When publishing an asset, embed the manifest's binding value into its text:
+const watermarked = encode(bindingValue, articleText);
+```
+
+`vsmarkExtractor` decodes the asset buffer as UTF-8 and returns the hidden binding value, or `null` if the asset isn't text or contains no watermark. `decode(text)` is also exported directly for use outside of `createServer()`.
+
 ---
 
 ## Production Considerations
 
-| Concern | Current approach | Production recommendation |
-|---|---|---|
-| **Persistence** | MongoDB + GCS plugins | Implement `DataStorePlugin`/`ObjectStorePlugin` for PostgreSQL, S3, etc. — see [Storage Plugins](#storage-plugins) |
-| **Authentication** | Google Identity Platform JWT | OAuth2 client credentials with JWT verification (already implemented) |
-| **Receipts** | HMAC-SHA256 | Anchor to a transparency log or blockchain |
-| **SSRF** | DNS-based IP blocking | Add signed URL enforcement and network egress controls |
-| **Rate limiting** | None | Add per-client rate limiting (e.g., `express-rate-limit`) |
-| **TLS** | None (plain HTTP) | Terminate TLS at a reverse proxy (nginx, Caddy, etc.) |
-| **`byContent` extraction** | Plugin stubs | Integrate real watermark/fingerprint vendor SDKs |
+| Concern                    | Current approach             | Production recommendation                                                                                                                                                     |
+| -------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Persistence**            | MongoDB + GCS plugins        | Implement `DataStorePlugin`/`ObjectStorePlugin` for PostgreSQL, S3, etc. — see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins) |
+| **Authentication**         | Google Identity Platform JWT | OAuth2 client credentials with JWT verification (already implemented)                                                                                                         |
+| **Receipts**               | HMAC-SHA256                  | Anchor to a transparency log or blockchain                                                                                                                                    |
+| **SSRF**                   | DNS-based IP blocking        | Add signed URL enforcement and network egress controls                                                                                                                        |
+| **Rate limiting**          | None                         | Add per-client rate limiting (e.g., `express-rate-limit`)                                                                                                                     |
+| **TLS**                    | None (plain HTTP)            | Terminate TLS at a reverse proxy (nginx, Caddy, etc.)                                                                                                                         |
+| **`byContent` extraction** | Plugin stubs                 | Integrate real watermark/fingerprint vendor SDKs                                                                                                                              |
 
 ---
 
 ## License
 
-[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/) — matching the C2PA Soft Binding Resolution API specification.
+[MIT](LICENSE)

@@ -45,7 +45,12 @@ describe('createConsoleLogger', () => {
     child.warn('careful');
 
     const line = JSON.parse(stdoutSpy.mock.calls[0][0] as string);
-    expect(line).toMatchObject({ level: 'warn', msg: 'careful', service: 'softbinding', requestId: 'abc' });
+    expect(line).toMatchObject({
+      level: 'warn',
+      msg: 'careful',
+      service: 'softbinding',
+      requestId: 'abc',
+    });
   });
 });
 
@@ -107,7 +112,12 @@ describe('createRequestLogger', () => {
 
     expect(logger.info).toHaveBeenCalledWith(
       'request',
-      expect.objectContaining({ method: 'GET', path: '/hello', status: 200, durationMs: expect.any(Number) }),
+      expect.objectContaining({
+        method: 'GET',
+        path: '/hello',
+        status: 200,
+        durationMs: expect.any(Number),
+      }),
     );
   });
 });

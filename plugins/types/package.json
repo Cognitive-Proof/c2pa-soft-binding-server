@@ -2,11 +2,18 @@
   "name": "@cognitiveproof/softbinding-api-plugin-types",
   "version": "1.0.0",
   "description": "Shared TypeScript interfaces for C2PA Soft Binding Resolution API server storage plugins",
+  "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express-rate-limit": "^8.5.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

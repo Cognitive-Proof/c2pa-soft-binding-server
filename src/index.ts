@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yaml';
 import { resolveConfig, type SoftBindingServerOptions } from './config';
@@ -9,6 +10,7 @@ import { loadDataStore } from './store';
 import { createSoftBindingRegistry } from './softBinding';
 import { resolveAuthMiddleware } from './auth';
 import { resolveLogger, createRequestLogger } from './logger';
+import { resolveRateLimitStore } from './rateLimit';
 import { createQueryRouter } from './routes/query';
 import { createStoreRouter } from './routes/store';
 import { createFetchRouter } from './routes/fetch';
@@ -28,6 +30,8 @@ export type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { JwtAuthOptions } from './auth';
 export type { Logger, LoggerPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { HelmetOptions } from 'helmet';
+export type { Options as RateLimitOptions, Store as RateLimitStore } from 'express-rate-limit';
+export type { RateLimitStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export { loadDataStore } from './store';
 export { loadObjectStore } from './objectStore';
 export { createJwtAuthMiddleware } from './auth';
@@ -46,6 +50,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   const softBinding = createSoftBindingRegistry(options.extractors);
   const auth = resolveAuthMiddleware(options.auth, options.gcpProjectId);
   const logger = resolveLogger(options.logger);
+  const rateLimitStore = resolveRateLimitStore(options.rateLimitStore);
 
   const app = express();
 
@@ -66,6 +71,13 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
 
     app.get('/v1/openapi.json', (_req, res) => res.json(openapiDocument));
     app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDocument));
+  }
+
+  if (config.rateLimit !== false) {
+    app.use(
+      '/v1',
+      rateLimit({ ...config.rateLimit, ...(rateLimitStore ? { store: rateLimitStore } : {}) }),
+    );
   }
 
   app.use(

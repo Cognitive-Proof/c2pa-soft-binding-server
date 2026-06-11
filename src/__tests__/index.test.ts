@@ -66,12 +66,60 @@ describe('createServer', () => {
   });
 
   it('does not apply helmet headers when helmet is false', async () => {
-    const app = createServer({ dataStore: createFakeDataStore(), auth: allowAll, docs: false, helmet: false });
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      helmet: false,
+    });
 
     const res = await request(app).get('/');
 
     expect(res.headers['x-content-type-options']).toBeUndefined();
     expect(res.headers['x-dns-prefetch-control']).toBeUndefined();
+  });
+
+  it('rate limits /v1 routes and returns 429 once the limit is exceeded', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      rateLimit: { windowMs: 60_000, limit: 2 },
+    });
+
+    await request(app).get('/v1/services/supportedAlgorithms');
+    await request(app).get('/v1/services/supportedAlgorithms');
+    const res = await request(app).get('/v1/services/supportedAlgorithms');
+
+    expect(res.status).toBe(429);
+  });
+
+  it('does not rate limit / when rateLimit is set', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      rateLimit: { windowMs: 60_000, limit: 1 },
+    });
+
+    await request(app).get('/');
+    const res = await request(app).get('/');
+
+    expect(res.status).toBe(200);
+  });
+
+  it('does not rate limit when rateLimit is false', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      rateLimit: false,
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app).get('/v1/services/supportedAlgorithms');
+      expect(res.status).toBe(200);
+    }
   });
 
   it('logs each request via the configured logger', async () => {
@@ -82,7 +130,12 @@ describe('createServer', () => {
       error: jest.fn(),
       child: jest.fn(),
     };
-    const app = createServer({ dataStore: createFakeDataStore(), auth: allowAll, docs: false, logger });
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      logger,
+    });
 
     await request(app).get('/');
 
@@ -103,6 +156,9 @@ describe('createServer', () => {
     const res = await request(app).get('/v1/services/supportedAlgorithms');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ watermarks: [{ alg: 'com.example.watermark.v1' }], fingerprints: [] });
+    expect(res.body).toEqual({
+      watermarks: [{ alg: 'com.example.watermark.v1' }],
+      fingerprints: [],
+    });
   });
 });

@@ -1,0 +1,28 @@
+{
+  "name": "@cognitiveproof/softbinding-api-plugin-redis-rate-limit",
+  "version": "1.0.0",
+  "description": "Redis-backed rate limit store plugin for the C2PA Soft Binding Resolution API server",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
+    "ioredis": "^5.11.1",
+    "rate-limit-redis": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "express-rate-limit": "^8.5.2",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,9 +1,9 @@
-name: "Release"
+name: 'Release'
 
 on:
   push:
     branches:
-      - "main"
+      - 'main'
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: 'npm'
       - run: npm ci
       - run: npm run typecheck
         env:
@@ -40,7 +40,7 @@ jobs:
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
-          token_format: "access_token"
+          token_format: 'access_token'
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to Artifact Registry

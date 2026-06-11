@@ -114,10 +114,14 @@ describe('PUT /v1/bindings', () => {
     const manifestId2 = await dataStore.addManifest(Buffer.from('m2'), 'application/c2pa');
     await dataStore.createBinding('b1', manifestId1);
 
-    const res = await request(app).put('/v1/bindings').send({ bindingValue: 'b1', manifestId: manifestId2 });
+    const res = await request(app)
+      .put('/v1/bindings')
+      .send({ bindingValue: 'b1', manifestId: manifestId2 });
 
     expect(res.status).toBe(204);
-    expect(await dataStore.findByBinding('b1')).toEqual([{ manifestId: manifestId2, similarityScore: 1 }]);
+    expect(await dataStore.findByBinding('b1')).toEqual([
+      { manifestId: manifestId2, similarityScore: 1 },
+    ]);
   });
 });
 

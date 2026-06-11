@@ -1,4 +1,9 @@
-import type { DataStorePlugin, ManifestEntry, Match, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
+import type {
+  DataStorePlugin,
+  ManifestEntry,
+  Match,
+  Receipt,
+} from '@cognitiveproof/softbinding-api-plugin-types';
 
 let nextId = 0;
 

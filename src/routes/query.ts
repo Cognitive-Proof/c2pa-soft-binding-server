@@ -19,7 +19,7 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
 
   // Body parser for raw binary assets (byContent route)
   const rawAsset = express.raw({
-    type: req => ASSET_MIME_RE.test(req.headers['content-type'] ?? ''),
+    type: (req) => ASSET_MIME_RE.test(req.headers['content-type'] ?? ''),
     limit: maxUploadSize,
   });
 
@@ -176,7 +176,7 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
       return res.json({ matches: await dataStore.findByBinding(bindingValue, maxResults) });
     } catch (err) {
       if (err instanceof Error) {
-        const ssrfMsg = ['URL', 'HTTPS', 'IP', 'hostname'].some(k => err.message.includes(k));
+        const ssrfMsg = ['URL', 'HTTPS', 'IP', 'hostname'].some((k) => err.message.includes(k));
         if (ssrfMsg) return res.status(400).json({ error: err.message });
       }
       return res.status(500).json({ error: 'Service failure' });

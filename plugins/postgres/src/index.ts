@@ -16,11 +16,10 @@ const postgresDataStore: DataStorePlugin = {
   async addManifest(data, contentType) {
     await ready();
     const manifestId = `urn:c2pa:${uuidv4()}`;
-    await pool.query('INSERT INTO manifests (id, data, content_type, receipt) VALUES ($1, $2, $3, NULL)', [
-      manifestId,
-      data,
-      contentType,
-    ]);
+    await pool.query(
+      'INSERT INTO manifests (id, data, content_type, receipt) VALUES ($1, $2, $3, NULL)',
+      [manifestId, data, contentType],
+    );
     return manifestId;
   },
 
@@ -70,9 +69,10 @@ const postgresDataStore: DataStorePlugin = {
     try {
       await client.query('BEGIN');
 
-      const existing = await client.query('SELECT 1 FROM bindings WHERE binding_value = $1 LIMIT 1', [
-        bindingValue,
-      ]);
+      const existing = await client.query(
+        'SELECT 1 FROM bindings WHERE binding_value = $1 LIMIT 1',
+        [bindingValue],
+      );
       if ((existing.rowCount ?? 0) === 0) {
         await client.query('ROLLBACK');
         return false;
@@ -106,7 +106,7 @@ const postgresDataStore: DataStorePlugin = {
       'SELECT manifest_id FROM bindings WHERE binding_value = $1 ORDER BY id ASC LIMIT $2',
       [bindingValue, maxResults],
     );
-    return result.rows.map(row => ({ manifestId: row.manifest_id, similarityScore: 100 }));
+    return result.rows.map((row) => ({ manifestId: row.manifest_id, similarityScore: 100 }));
   },
 
   async setReceipt(manifestId, receipt) {

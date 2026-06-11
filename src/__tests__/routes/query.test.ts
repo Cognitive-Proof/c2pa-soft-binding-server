@@ -164,7 +164,9 @@ describe('POST /v1/matches/byReference', () => {
   it('returns 400 when referenceUrl or assetLength is missing', async () => {
     const { app } = buildApp();
 
-    const res = await request(app).post('/v1/matches/byReference').send({ referenceUrl: 'https://example.com/a.jpg' });
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({ referenceUrl: 'https://example.com/a.jpg' });
 
     expect(res.status).toBe(400);
   });

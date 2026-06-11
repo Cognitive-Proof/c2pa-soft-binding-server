@@ -2,11 +2,16 @@
   "name": "@cognitiveproof/softbinding-api-plugin-sqlite",
   "version": "1.0.0",
   "description": "SQLite data store plugin for the C2PA Soft Binding Resolution API server",
+  "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
   },
   "dependencies": {
     "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
@@ -15,7 +20,10 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
+    "@types/jest": "^30.0.0",
     "@types/uuid": "^9.0.7",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.3.3"
   }
 }

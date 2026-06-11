@@ -22,7 +22,9 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 
 function isNotFound(error: unknown): boolean {
   const err = error as Error & { name?: string; $metadata?: { httpStatusCode?: number } };
-  return err.name === 'NoSuchKey' || err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404;
+  return (
+    err.name === 'NoSuchKey' || err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404
+  );
 }
 
 async function objectExists(key: string, bucket: string): Promise<boolean> {
@@ -139,7 +141,7 @@ async function deleteObjectsOlderThan(
       await s3.send(
         new DeleteObjectsCommand({
           Bucket: bucket,
-          Delete: { Objects: batch.map(Key => ({ Key })) },
+          Delete: { Objects: batch.map((Key) => ({ Key })) },
         }),
       );
     } catch (error) {
@@ -171,14 +173,14 @@ async function getPublicUrl(key: string): Promise<string | null> {
 
 const awsBucketObjectStore: ObjectStorePlugin = {
   saveData: (key, data, contentType) => saveObject(key, data, buckets.data, contentType),
-  loadData: key => loadObject(key, buckets.data),
+  loadData: (key) => loadObject(key, buckets.data),
   createDataLink: (key, expires) => createObjectLink(key, buckets.data, expires),
-  deleteData: key => deleteObject(key, buckets.data),
-  deleteDataOlderThan: maxAgeMs => deleteObjectsOlderThan(buckets.data, maxAgeMs),
+  deleteData: (key) => deleteObject(key, buckets.data),
+  deleteDataOlderThan: (maxAgeMs) => deleteObjectsOlderThan(buckets.data, maxAgeMs),
   savePublicData: (key, data, contentType) => saveObject(key, data, buckets.public, contentType),
-  loadPublicData: key => loadObject(key, buckets.public),
+  loadPublicData: (key) => loadObject(key, buckets.public),
   getPublicUrl,
-  deletePublicData: key => deleteObject(key, buckets.public),
+  deletePublicData: (key) => deleteObject(key, buckets.public),
 };
 
 export default awsBucketObjectStore;

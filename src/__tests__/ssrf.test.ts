@@ -33,20 +33,16 @@ describe('validateReferenceUrl', () => {
     );
   });
 
-  it.each([
-    ['10.0.0.5'],
-    ['172.16.0.1'],
-    ['192.168.1.1'],
-    ['127.0.0.1'],
-    ['169.254.1.1'],
-    ['::1'],
-  ])('rejects URLs resolving to private/reserved address %s', async address => {
-    mockedLookup.mockResolvedValue([{ address, family: address.includes(':') ? 6 : 4 }]);
+  it.each([['10.0.0.5'], ['172.16.0.1'], ['192.168.1.1'], ['127.0.0.1'], ['169.254.1.1'], ['::1']])(
+    'rejects URLs resolving to private/reserved address %s',
+    async (address) => {
+      mockedLookup.mockResolvedValue([{ address, family: address.includes(':') ? 6 : 4 }]);
 
-    await expect(validateReferenceUrl('https://internal.example/asset.jpg')).rejects.toThrow(
-      'Reference URL resolves to a private or reserved IP address',
-    );
-  });
+      await expect(validateReferenceUrl('https://internal.example/asset.jpg')).rejects.toThrow(
+        'Reference URL resolves to a private or reserved IP address',
+      );
+    },
+  );
 
   it('allows HTTPS URLs resolving to public addresses', async () => {
     mockedLookup.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);

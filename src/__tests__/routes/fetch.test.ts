@@ -41,7 +41,10 @@ describe('GET /v1/manifests/:manifestId', () => {
 
   it('returns the manifest data with the application/c2pa content type', async () => {
     const { app, dataStore } = buildApp();
-    const manifestId = await dataStore.addManifest(Buffer.from('manifest-bytes'), 'application/c2pa');
+    const manifestId = await dataStore.addManifest(
+      Buffer.from('manifest-bytes'),
+      'application/c2pa',
+    );
 
     const res = await request(app)
       .get(`/v1/manifests/${encodeURIComponent(manifestId)}`)
@@ -116,7 +119,9 @@ describe('POST /v1/manifests/:manifestId/receipts', () => {
     const { app } = buildApp();
     const receipt = buildReceipt('urn:c2pa:nonexistent');
 
-    const res = await request(app).post('/v1/manifests/urn:c2pa:nonexistent/receipts').send(receipt);
+    const res = await request(app)
+      .post('/v1/manifests/urn:c2pa:nonexistent/receipts')
+      .send(receipt);
 
     expect(res.status).toBe(404);
   });

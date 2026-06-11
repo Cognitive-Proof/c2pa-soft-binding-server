@@ -22,7 +22,11 @@ describe('createSoftBindingRegistry', () => {
     });
 
     const buffer = Buffer.from('asset-bytes');
-    const result = await registry.extractSoftBinding(buffer, 'image/png', 'com.example.watermark.v1');
+    const result = await registry.extractSoftBinding(
+      buffer,
+      'image/png',
+      'com.example.watermark.v1',
+    );
 
     expect(result).toBe('d2F0ZXJtYXJr');
     expect(watermarkExtractor).toHaveBeenCalledWith(buffer, 'image/png');
@@ -41,6 +45,8 @@ describe('createSoftBindingRegistry', () => {
 
     registry.registerExtractor('com.example.watermark.v2', async () => null);
 
-    expect(registry.getSupportedAlgorithms().watermarks).toEqual([{ alg: 'com.example.watermark.v2' }]);
+    expect(registry.getSupportedAlgorithms().watermarks).toEqual([
+      { alg: 'com.example.watermark.v2' },
+    ]);
   });
 });

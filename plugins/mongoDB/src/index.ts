@@ -1,6 +1,11 @@
 import { type Document, type Filter } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
-import type { DataStorePlugin, ManifestEntry, Match, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
+import type {
+  DataStorePlugin,
+  ManifestEntry,
+  Match,
+  Receipt,
+} from '@cognitiveproof/softbinding-api-plugin-types';
 import { getCollection, getDocById, insertDoc, updateDoc } from './client';
 
 // Internal MongoDB document shapes
@@ -75,11 +80,9 @@ const mongoDataStore: DataStorePlugin = {
     const doc = await getDocById<BindingDoc>(BINDINGS, bindingValue);
     if (!doc) return false;
     if (!(await mongoDataStore.manifestExists(manifestId))) return false;
-    await updateDoc<BindingDoc>(
-      BINDINGS,
-      { id: bindingValue } as Filter<BindingDoc>,
-      { manifestIds: [manifestId] },
-    );
+    await updateDoc<BindingDoc>(BINDINGS, { id: bindingValue } as Filter<BindingDoc>, {
+      manifestIds: [manifestId],
+    });
     return true;
   },
 
@@ -88,7 +91,7 @@ const mongoDataStore: DataStorePlugin = {
     if (!doc || doc.manifestIds.length === 0) return [];
     return doc.manifestIds
       .slice(0, maxResults)
-      .map(manifestId => ({ manifestId, similarityScore: 100 }));
+      .map((manifestId) => ({ manifestId, similarityScore: 100 }));
   },
 
   async setReceipt(manifestId: string, receipt: Receipt): Promise<boolean> {

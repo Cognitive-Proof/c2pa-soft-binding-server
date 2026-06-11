@@ -1,4 +1,7 @@
-import type { DataStorePlugin, ObjectStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
+import type {
+  DataStorePlugin,
+  ObjectStorePlugin,
+} from '@cognitiveproof/softbinding-api-plugin-types';
 import { loadDataStore } from '../store';
 import { loadObjectStore } from '../objectStore';
 import { createFakeDataStore } from './helpers/fakeDataStore';
