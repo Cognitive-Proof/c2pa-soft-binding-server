@@ -1,7 +1,7 @@
 import express, { Request, RequestHandler, Response, Router } from 'express';
-import crypto from 'crypto';
 import type { DataStorePlugin, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
 import { requireAuthScope } from '../auth';
+import { verifyReceipt } from '../receipts';
 
 export interface FetchRouterDeps {
   dataStore: DataStorePlugin;
@@ -13,20 +13,6 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
   const { dataStore, auth, receiptSecret } = deps;
   const router = express.Router();
   const requireFetchScope = requireAuthScope('fetch:manifests');
-
-  function verifyProof(manifestId: string, proof: string | undefined): boolean {
-    if (!proof) return false;
-    const expected = crypto
-      .createHmac('sha256', receiptSecret)
-      .update(manifestId)
-      .digest('base64url');
-    // Constant-time comparison to prevent timing attacks
-    try {
-      return crypto.timingSafeEqual(Buffer.from(proof), Buffer.from(expected));
-    } catch {
-      return false;
-    }
-  }
 
   // GET /manifests/:manifestId
   // Returns the full C2PA Manifest Store (or only the active manifest if requested).
@@ -69,7 +55,8 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
           return res.status(404).json({ error: 'C2PA Manifest Store or receipt not found' });
         }
 
-        const verified = verifyProof(manifestId, receipt.anchor?.proof?.value);
+        const verified =
+          receipt.repository?.manifestId === manifestId && verifyReceipt(receipt, receiptSecret);
         return res.json({ ...receipt, verified });
       } catch {
         return res.status(500).json({ error: 'Service failure' });
@@ -102,7 +89,7 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
           });
         }
 
-        const verified = verifyProof(manifestId, receipt.anchor?.proof?.value);
+        const verified = verifyReceipt(receipt, receiptSecret);
         return res.json({
           ...receipt,
           verified,

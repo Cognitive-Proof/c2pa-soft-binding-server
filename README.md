@@ -206,7 +206,7 @@ Body parsing is applied per-route rather than globally:
 
 ### Receipt mechanism
 
-When a manifest is ingested with `?returnReceipt=true`, the server generates a receipt containing an HMAC-SHA256 proof over the manifest ID, signed with `RECEIPT_SECRET`. This proof can later be verified at `GET /manifests/:id/receipts` or by submitting the receipt to `POST /manifests/:id/receipts`.
+When a manifest is ingested with `?returnReceipt=true`, the server generates a receipt containing an HMAC-SHA256 proof over the receipt's `repository.uri`, `repository.manifestId`, and `anchor.uri`, signed with `RECEIPT_SECRET`. This proof can later be verified at `GET /manifests/:id/receipts` or by submitting the receipt to `POST /manifests/:id/receipts` — verification recomputes the HMAC over those fields (and checks `anchor.proof.alg`), so tampering with any of them, not just the manifest ID, invalidates the receipt.
 
 The receipt structure follows the `org.c2pa.manifest-receipt` JSON-LD schema defined in the specification. In a production system the `anchor.proof` field would typically contain a cryptographic proof from an external transparency log or blockchain anchor rather than a local HMAC.
 

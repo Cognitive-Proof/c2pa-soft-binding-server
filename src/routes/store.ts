@@ -1,7 +1,7 @@
 import express, { Request, RequestHandler, Response, Router } from 'express';
-import crypto from 'crypto';
 import type { DataStorePlugin, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
 import { requireAuthScope } from '../auth';
+import { buildReceipt } from '../receipts';
 
 export interface StoreRouterDeps {
   dataStore: DataStorePlugin;
@@ -18,29 +18,6 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
 
   // Body parser for C2PA Manifest Store blobs
   const c2paBody = express.raw({ type: 'application/c2pa', limit: '100mb' });
-
-  function buildReceipt(manifestId: string): Receipt {
-    const proof = crypto.createHmac('sha256', receiptSecret).update(manifestId).digest('base64url');
-
-    return {
-      '@context': {
-        c2pa: 'https://c2pa.org/ns/',
-        receipt: 'https://c2pa.org/ns/manifest-receipt#',
-      },
-      '@type': 'org.c2pa.manifest-receipt',
-      repository: {
-        uri: repoUri,
-        manifestId,
-      },
-      anchor: {
-        uri: `${repoUri}/v1/manifests/${encodeURIComponent(manifestId)}/receipts`,
-        proof: {
-          alg: 'HMAC-SHA256',
-          value: proof,
-        },
-      },
-    };
-  }
 
   // POST /manifests  — ingest a C2PA Manifest Store
   router.post(
@@ -62,7 +39,7 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
         const result: { manifestId: string; receipt?: Receipt } = { manifestId };
 
         if (returnReceipt) {
-          const receipt = buildReceipt(manifestId);
+          const receipt = buildReceipt(manifestId, repoUri, receiptSecret);
           await dataStore.setReceipt(manifestId, receipt);
           result.receipt = receipt;
         }

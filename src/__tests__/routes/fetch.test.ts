@@ -1,13 +1,13 @@
-import crypto from 'crypto';
 import express from 'express';
 import type { RequestHandler } from 'express';
 import request from 'supertest';
-import type { Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
 import { createFetchRouter } from '../../routes/fetch';
+import { buildReceipt as signReceipt } from '../../receipts';
 import { createFakeDataStore } from '../helpers/fakeDataStore';
 
 const allowAll: RequestHandler = (_req, _res, next) => next();
 const RECEIPT_SECRET = 'test-secret';
+const REPO_URI = 'https://repo.example.com';
 
 function buildApp() {
   const dataStore = createFakeDataStore();
@@ -17,17 +17,8 @@ function buildApp() {
   return { app, dataStore };
 }
 
-function buildReceipt(manifestId: string, secret = RECEIPT_SECRET): Receipt {
-  const proof = crypto.createHmac('sha256', secret).update(manifestId).digest('base64url');
-  return {
-    '@context': { c2pa: 'https://c2pa.org/ns/', receipt: 'https://c2pa.org/ns/manifest-receipt#' },
-    '@type': 'org.c2pa.manifest-receipt',
-    repository: { uri: 'https://repo.example.com', manifestId },
-    anchor: {
-      uri: `https://repo.example.com/v1/manifests/${manifestId}/receipts`,
-      proof: { alg: 'HMAC-SHA256', value: proof },
-    },
-  };
+function buildReceipt(manifestId: string, secret = RECEIPT_SECRET) {
+  return signReceipt(manifestId, REPO_URI, secret);
 }
 
 describe('GET /v1/manifests/:manifestId', () => {
@@ -94,6 +85,32 @@ describe('GET /v1/manifests/:manifestId/receipts', () => {
     const { app, dataStore } = buildApp();
     const manifestId = await dataStore.addManifest(Buffer.from('manifest'), 'application/c2pa');
     const receipt = buildReceipt(manifestId, 'wrong-secret');
+    await dataStore.setReceipt(manifestId, receipt);
+
+    const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}/receipts`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.verified).toBe(false);
+  });
+
+  it('returns the receipt with verified=false when repository.uri has been tampered with', async () => {
+    const { app, dataStore } = buildApp();
+    const manifestId = await dataStore.addManifest(Buffer.from('manifest'), 'application/c2pa');
+    const receipt = buildReceipt(manifestId);
+    receipt.repository.uri = 'https://attacker.example.com';
+    await dataStore.setReceipt(manifestId, receipt);
+
+    const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}/receipts`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.verified).toBe(false);
+  });
+
+  it('returns the receipt with verified=false when anchor.proof.alg has been tampered with', async () => {
+    const { app, dataStore } = buildApp();
+    const manifestId = await dataStore.addManifest(Buffer.from('manifest'), 'application/c2pa');
+    const receipt = buildReceipt(manifestId);
+    receipt.anchor.proof.alg = 'none';
     await dataStore.setReceipt(manifestId, receipt);
 
     const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}/receipts`);
