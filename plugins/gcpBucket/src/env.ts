@@ -1,9 +1,11 @@
 const skip = Boolean(process.env.SKIP_ENV_VALIDATION);
 
 function requireStr(name: string): string {
-  if (skip) return '';
   const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  if (!value) {
+    if (skip) return '';
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
   return value;
 }
 
