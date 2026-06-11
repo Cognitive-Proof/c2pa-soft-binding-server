@@ -1,0 +1,31 @@
+{
+  "name": "softbinding-example-gcp-mongo-vsmark",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example C2PA Soft Binding Resolution API server using MongoDB, Google Cloud Storage, Google Identity Platform auth, pino logging, and the variation-selector text watermark extractor",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-server": "*",
+    "@cognitiveproof/softbinding-api-plugin-mongodb": "*",
+    "@cognitiveproof/softbinding-api-plugin-gcp-bucket": "*",
+    "@cognitiveproof/softbinding-api-plugin-google-auth": "*",
+    "@cognitiveproof/softbinding-api-plugin-pino-logger": "*",
+    "@cognitiveproof/softbinding-api-plugin-vsmark": "*",
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
