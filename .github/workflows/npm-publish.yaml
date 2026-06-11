@@ -1,0 +1,50 @@
+name: 'Publish npm packages'
+
+on:
+  push:
+    branches:
+      - 'main'
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Version or publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      # OIDC trusted publishing requires npm >= 11.5.1; the version bundled
+      # with actions/setup-node's Node 20 is older.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - run: npm run typecheck
+        env:
+          SKIP_ENV_VALIDATION: 1
+
+      - run: npm test
+        env:
+          SKIP_ENV_VALIDATION: 1
+
+      - name: Create release pull request or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          publish: npm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
