@@ -93,6 +93,7 @@ c2pa-soft-binding-server/
 │   ├── store.ts               # loadDataStore() — resolves a DataStorePlugin instance or package name
 │   ├── objectStore.ts          # loadObjectStore() — resolves an ObjectStorePlugin instance or package name
 │   ├── auth.ts                 # resolveAuthMiddleware() — pluggable JWT/custom auth, defaults to Google Identity Platform
+│   ├── logger.ts                # resolveLogger() — pluggable structured logging, defaults to a console JSON logger
 │   ├── softBinding.ts          # createSoftBindingRegistry(extractors) — soft binding extractor registry
 │   ├── utils/
 │   │   └── ssrf.ts            # SSRF protection for the byReference endpoint
@@ -109,14 +110,15 @@ c2pa-soft-binding-server/
     ├── sqlite/                # @cognitiveproof/softbinding-api-plugin-sqlite — DataStore plugin
     ├── gcpBucket/             # @cognitiveproof/softbinding-api-plugin-gcp-bucket — ObjectStore plugin
     ├── awsBucket/             # @cognitiveproof/softbinding-api-plugin-aws-bucket — ObjectStore plugin
-    └── google-auth/           # @cognitiveproof/softbinding-api-plugin-google-auth — AuthPlugin (default)
+    ├── google-auth/           # @cognitiveproof/softbinding-api-plugin-google-auth — AuthPlugin (default)
+    └── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
 ```
 
 ### Layer responsibilities
 
 #### `src/index.ts` — library entry point / composition root
 
-Exports `createServer(options?)`, which resolves configuration, loads the data store plugin, builds the soft binding registry and auth middleware, and wires everything into an `express.Express` app: global JSON body parser, `/docs` + `/v1/openapi.json` (unless `docs: false`), the four route routers under `/v1`, and a 404 + error handler. The returned app is not listening — embed it in another app or call `.listen()` yourself.
+Exports `createServer(options?)`, which resolves configuration, loads the data store plugin, builds the soft binding registry and auth middleware, and wires everything into an `express.Express` app: `helmet()` security headers (unless `helmet: false`), request logging, global JSON body parser, `/docs` + `/v1/openapi.json` (unless `docs: false`), the four route routers under `/v1`, and a 404 + error handler. The returned app is not listening — embed it in another app or call `.listen()` yourself.
 
 #### `src/cli.ts` — standalone entry point
 
@@ -141,6 +143,20 @@ Defines `SoftBindingServerOptions` (the `createServer()` options type) and `reso
 In all cases the JWT-based middlewares fetch their JWKS once per server instance and cache/refresh keys via `jose`, returning 401 if no header is present, the token is expired, or verification fails.
 
 The spec mandates OAuth2 client credentials flow with the scope `fetch:manifests` for query/fetch routes and `store:manifests`/`store:bindings` for write routes — a custom `auth` middleware can enforce scopes if needed.
+
+#### `src/logger.ts` — structured logging
+
+`resolveLogger(logger)` resolves the `Logger` that `createServer()` uses for request logging and error reporting, based on the `logger` option:
+
+- **`logger` is a `Logger` instance** — used as-is. Bring your own logger by implementing `debug`/`info`/`warn`/`error`/`child` (e.g. wrapping an existing Winston/Bunyan instance).
+- **`logger` is a package name, or `LOGGER_PLUGIN` is set** — loads an npm package implementing `LoggerPlugin` (e.g. the optional `@cognitiveproof/softbinding-api-plugin-pino-logger`).
+- **`logger` is omitted and `LOGGER_PLUGIN` is unset** — falls back to `createConsoleLogger()`, a built-in logger that writes JSON lines (`level`, `time`, `msg`, plus any metadata) to stdout (`debug`/`info`/`warn`) or stderr (`error`) — no extra dependencies required.
+
+`createServer()` mounts `createRequestLogger(logger)` as the first middleware, which logs `{ method, path, status, durationMs }` for every request once the response finishes, and the error handler logs uncaught route errors via `logger.error()` instead of `console.error()`.
+
+#### Security headers (`helmet`)
+
+`createServer()` mounts [`helmet()`](https://helmetjs.github.io/) as the first middleware, which sets a baseline of security-related HTTP response headers (`X-Content-Type-Options`, `X-DNS-Prefetch-Control`, `Strict-Transport-Security`, removes `X-Powered-By`, etc.). Pass `helmet: false` to disable it entirely, or `helmet: { ...HelmetOptions }` to customize (e.g. configure a Content-Security-Policy). Default: enabled with helmet's defaults.
 
 #### `src/softBinding.ts` — extractor registry
 
@@ -224,6 +240,7 @@ npm run dev      # development with auto-reload (requires nodemon)
 | `DATASTORE_PLUGIN` | `@cognitiveproof/softbinding-api-plugin-mongodb` | npm package implementing `DataStorePlugin` (`dataStore`) |
 | `OBJECTSTORE_PLUGIN` | `@cognitiveproof/softbinding-api-plugin-gcp-bucket` | npm package implementing `ObjectStorePlugin` (`objectStore`) |
 | `AUTH_PLUGIN` | `@cognitiveproof/softbinding-api-plugin-google-auth` | npm package implementing `AuthPlugin<string>`, used when `auth` is not set |
+| `LOGGER_PLUGIN` | — | npm package implementing `LoggerPlugin`, used when `logger` is not set (default: built-in console JSON logger) |
 | `SKIP_ENV_VALIDATION` | — | Set to skip the `gcpProjectId`/`auth` requirement (and per-plugin env validation) — useful for tests |
 
 Each storage plugin reads its own additional environment variables — see [Storage Plugins](#storage-plugins).
@@ -277,6 +294,8 @@ c2paApp.listen(3000);
 | `auth` | `RequestHandler \| { issuer, audience, jwksUri }` — overrides the default auth (see below) |
 | `extractors` | `Record<string, Extractor>` |
 | `docs` | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json` |
+| `logger` | `Logger \| string` — overrides the default console JSON logger (see below) |
+| `helmet` | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults) |
 
 By default, `/v1` routes require a Google Identity Platform JWT for `gcpProjectId`. To use a different identity provider or auth scheme, pass `auth`:
 
@@ -301,18 +320,42 @@ createServer({
 });
 ```
 
-The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, and `createJwtAuthMiddleware` helpers.
+By default, logs are written as JSON lines to stdout/stderr. To use a different logger, pass `logger`:
+
+```ts
+// A LoggerPlugin package, e.g. the optional pino plugin:
+createServer({
+  logger: '@cognitiveproof/softbinding-api-plugin-pino-logger',
+  // ...
+});
+
+// Or a Logger instance (bring your own — wrap Winston, Bunyan, pino, etc.):
+createServer({
+  logger: {
+    debug: (msg, meta) => myLogger.debug(meta, msg),
+    info: (msg, meta) => myLogger.info(meta, msg),
+    warn: (msg, meta) => myLogger.warn(meta, msg),
+    error: (msg, meta) => myLogger.error(meta, msg),
+    child: (bindings) => wrapLogger(myLogger.child(bindings)),
+  },
+  // ...
+});
+```
+
+The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, and `createConsoleLogger` helpers.
 
 ---
 
-## Storage Plugins
+## Storage, Auth, and Logging Plugins
 
-Persistence is implemented entirely by npm packages that conform to the interfaces in [`@cognitiveproof/softbinding-api-plugin-types`](plugins/types/src/index.ts):
+Persistence, the default authentication scheme, and logging are implemented entirely by npm packages that conform to the interfaces in [`@cognitiveproof/softbinding-api-plugin-types`](plugins/types/src/index.ts):
 
 - **`DataStorePlugin`** — stores C2PA Manifest Stores, soft binding associations, and receipts (`addManifest`, `getManifest`, `findByBinding`, `createBinding`, etc.)
 - **`ObjectStorePlugin`** — stores arbitrary binary blobs in a "data" bucket and a "public" bucket (`saveData`, `loadData`, `getPublicUrl`, etc.)
+- **`AuthPlugin<TConfig>`** — builds the Express middleware used to authenticate `/v1` requests when `auth` isn't passed to `createServer()`, given a config value (`gcpProjectId` for the bundled plugin)
+- **`LoggerPlugin<TConfig>`** — builds the `Logger` used for request logging and error reporting when `logger` isn't passed to `createServer()`, given an implementation-specific config value (e.g. a log level)
 
-`createServer()` resolves the data store plugin via `loadDataStore()` (an instance passed as `options.dataStore`, an npm package name, or `DATASTORE_PLUGIN`/the bundled default) and injects it into the route factories. Route code never imports a plugin directly.
+`createServer()` resolves the data store plugin via `loadDataStore()` (an instance passed as `options.dataStore`, an npm package name, or `DATASTORE_PLUGIN`/the bundled default), the default auth plugin via `AUTH_PLUGIN`/the bundled default, and the logger via `resolveLogger()` (`options.logger`, `LOGGER_PLUGIN`, or the built-in console logger), injecting the results into the route factories. Route code never imports a plugin directly.
 
 ### Bundled plugins
 
@@ -324,6 +367,8 @@ Persistence is implemented entirely by npm packages that conform to the interfac
 | `@cognitiveproof/softbinding-api-plugin-sqlite` | `DataStorePlugin` | SQLite (file or in-memory) | `SQLITE_DB_PATH` (default `./data/softbinding.sqlite`) |
 | `@cognitiveproof/softbinding-api-plugin-gcp-bucket` | `ObjectStorePlugin` | Google Cloud Storage | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `GOOGLE_BUCKET_CREDENTIAL` |
 | `@cognitiveproof/softbinding-api-plugin-aws-bucket` | `ObjectStorePlugin` | AWS S3 (or S3-compatible, e.g. MinIO/R2) | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `AWS_REGION`, `AWS_S3_ENDPOINT`, `AWS_S3_FORCE_PATH_STYLE` |
+| `@cognitiveproof/softbinding-api-plugin-google-auth` | `AuthPlugin<string>` | Google Cloud Identity Platform | `GCP_PROJECT_ID` (`gcpProjectId`) |
+| `@cognitiveproof/softbinding-api-plugin-pino-logger` | `LoggerPlugin` | [pino](https://getpino.io/) | optional `LOG_LEVEL` (default `info`) |
 
 The SQL plugins (`postgres`, `mysql`, `sqlite`) all use the same `manifests` / `bindings` schema with a foreign key from `bindings.manifest_id` to `manifests.id` (`ON DELETE CASCADE`), and create their tables automatically on first use.
 
@@ -343,7 +388,7 @@ createServer({
 });
 ```
 
-If `loadDataStore`/`loadObjectStore` can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`.
+If `loadDataStore`/`loadObjectStore`/the auth plugin loader/the logger plugin loader can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`. Note that `@cognitiveproof/softbinding-api-plugin-google-auth` is only required when relying on the default Google auth (i.e. when `auth` is not passed to `createServer()`) — passing `auth` makes it unnecessary. Likewise, `@cognitiveproof/softbinding-api-plugin-pino-logger` is only required when `logger`/`LOGGER_PLUGIN` references it — by default `createServer()` uses the built-in console logger and needs no logging plugin at all.
 
 ### Switching backends
 

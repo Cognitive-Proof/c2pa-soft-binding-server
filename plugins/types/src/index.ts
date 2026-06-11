@@ -70,3 +70,23 @@ export interface ObjectStorePlugin {
  * identity provider.
  */
 export type AuthPlugin<TConfig = unknown> = (config: TConfig) => RequestHandler;
+
+/**
+ * A structured logger used for request logging and error reporting.
+ * `meta` is merged into the structured (e.g. JSON) output alongside `msg`.
+ */
+export interface Logger {
+  debug(msg: string, meta?: Record<string, unknown>): void;
+  info(msg: string, meta?: Record<string, unknown>): void;
+  warn(msg: string, meta?: Record<string, unknown>): void;
+  error(msg: string, meta?: Record<string, unknown>): void;
+  /** Returns a child logger that merges `bindings` into every log entry's metadata. */
+  child(bindings: Record<string, unknown>): Logger;
+}
+
+/**
+ * A LoggerPlugin builds a Logger, given an implementation-specific config
+ * value (e.g. a minimum log level). Implementations are free to write logs
+ * to any destination in any format.
+ */
+export type LoggerPlugin<TConfig = unknown> = (config: TConfig) => Logger;

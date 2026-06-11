@@ -53,7 +53,7 @@ function loadAuthPlugin(): AuthPlugin<string> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require(packageName) as { default: AuthPlugin<string> }).default;
   } catch (err) {
-    if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') {
+    if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
       throw new Error(`Auth plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`);
     }
     throw err;

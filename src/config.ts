@@ -1,6 +1,11 @@
 import crypto from 'crypto';
 import type { RequestHandler } from 'express';
-import type { DataStorePlugin, ObjectStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
+import type { HelmetOptions } from 'helmet';
+import type {
+  DataStorePlugin,
+  ObjectStorePlugin,
+  Logger,
+} from '@cognitiveproof/softbinding-api-plugin-types';
 import type { Extractor } from './softBinding';
 import type { JwtAuthOptions } from './auth';
 
@@ -30,6 +35,18 @@ export interface SoftBindingServerOptions {
   extractors?: Record<string, Extractor>;
   /** Mount /docs and /v1/openapi.json. Default: true. */
   docs?: boolean;
+  /**
+   * A Logger instance, or the name of an npm package implementing a
+   * LoggerPlugin (e.g. `@cognitiveproof/softbinding-api-plugin-pino-logger`).
+   * Default: LOGGER_PLUGIN env var, else a built-in console JSON logger.
+   */
+  logger?: Logger | string;
+  /**
+   * Security headers via `helmet`. Pass `false` to disable, or a `HelmetOptions`
+   * object to customize (e.g. Content-Security-Policy directives). Default: enabled
+   * with helmet's defaults.
+   */
+  helmet?: HelmetOptions | false;
 }
 
 export interface ResolvedConfig {
@@ -38,6 +55,7 @@ export interface ResolvedConfig {
   maxUploadSize: number;
   maxReferenceSize: number;
   docs: boolean;
+  helmet: HelmetOptions | false;
 }
 
 export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedConfig {
@@ -50,5 +68,6 @@ export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedC
     maxReferenceSize:
       options.maxReferenceSize ?? parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10),
     docs: options.docs ?? true,
+    helmet: options.helmet ?? {},
   };
 }

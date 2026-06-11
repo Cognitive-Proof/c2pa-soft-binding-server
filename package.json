@@ -15,16 +15,17 @@
     "plugins/*"
   ],
   "scripts": {
-    "build": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run build -w @cognitiveproof/softbinding-api-plugin-mongodb -w @cognitiveproof/softbinding-api-plugin-gcp-bucket -w @cognitiveproof/softbinding-api-plugin-aws-bucket -w @cognitiveproof/softbinding-api-plugin-sqlite -w @cognitiveproof/softbinding-api-plugin-postgres -w @cognitiveproof/softbinding-api-plugin-mysql -w @cognitiveproof/softbinding-api-plugin-google-auth && tsc",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit",
+    "build": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run build -w @cognitiveproof/softbinding-api-plugin-mongodb -w @cognitiveproof/softbinding-api-plugin-gcp-bucket -w @cognitiveproof/softbinding-api-plugin-aws-bucket -w @cognitiveproof/softbinding-api-plugin-sqlite -w @cognitiveproof/softbinding-api-plugin-postgres -w @cognitiveproof/softbinding-api-plugin-mysql -w @cognitiveproof/softbinding-api-plugin-google-auth -w @cognitiveproof/softbinding-api-plugin-pino-logger && tsc",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit && tsc -p tsconfig.jest.json",
     "start": "node dist/cli.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "jest"
   },
   "dependencies": {
     "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "helmet": "^8.2.0",
     "jose": "^6.2.3",
     "swagger-ui-express": "^5.0.1",
     "yaml": "^2.9.0"
@@ -35,14 +36,23 @@
     "@cognitiveproof/softbinding-api-plugin-google-auth": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-mongodb": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-mysql": "^1.0.0",
+    "@cognitiveproof/softbinding-api-plugin-pino-logger": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-postgres": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-sqlite": "^1.0.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.0",
+    "@types/supertest": "^7.2.0",
     "@types/swagger-ui-express": "^4.1.8",
+    "babel-jest": "^30.4.1",
+    "jest": "^30.4.2",
     "nodemon": "^3.0.1",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }

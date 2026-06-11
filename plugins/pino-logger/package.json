@@ -1,0 +1,18 @@
+{
+  "name": "@cognitiveproof/softbinding-api-plugin-pino-logger",
+  "version": "1.0.0",
+  "description": "Pino structured logging plugin for the C2PA Soft Binding Resolution API server",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

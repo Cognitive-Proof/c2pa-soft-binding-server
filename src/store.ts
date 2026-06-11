@@ -16,7 +16,7 @@ export function loadDataStore(plugin?: DataStorePlugin | string): DataStorePlugi
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require(packageName) as { default: DataStorePlugin }).default;
   } catch (err) {
-    if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') {
+    if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
       throw new Error(
         `DataStore plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`,
       );

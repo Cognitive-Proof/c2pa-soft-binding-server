@@ -20,7 +20,7 @@ export function loadObjectStore(plugin?: ObjectStorePlugin | string): ObjectStor
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require(packageName) as { default: ObjectStorePlugin }).default;
   } catch (err) {
-    if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') {
+    if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
       throw new Error(
         `ObjectStore plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`,
       );

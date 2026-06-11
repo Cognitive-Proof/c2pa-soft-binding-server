@@ -1,12 +1,14 @@
 import path from 'path';
 import fs from 'fs';
 import express, { Express, Request, Response, NextFunction } from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yaml';
 import { resolveConfig, type SoftBindingServerOptions } from './config';
 import { loadDataStore } from './store';
 import { createSoftBindingRegistry } from './softBinding';
 import { resolveAuthMiddleware } from './auth';
+import { resolveLogger, createRequestLogger } from './logger';
 import { createQueryRouter } from './routes/query';
 import { createStoreRouter } from './routes/store';
 import { createFetchRouter } from './routes/fetch';
@@ -24,9 +26,12 @@ export type {
 export type { Extractor, SupportedAlgorithms, SoftBindingRegistry } from './softBinding';
 export type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { JwtAuthOptions } from './auth';
+export type { Logger, LoggerPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
+export type { HelmetOptions } from 'helmet';
 export { loadDataStore } from './store';
 export { loadObjectStore } from './objectStore';
 export { createJwtAuthMiddleware } from './auth';
+export { createConsoleLogger } from './logger';
 
 /**
  * Builds a configured C2PA Soft Binding Resolution API Express app.
@@ -40,8 +45,15 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   const dataStore = loadDataStore(options.dataStore);
   const softBinding = createSoftBindingRegistry(options.extractors);
   const auth = resolveAuthMiddleware(options.auth, options.gcpProjectId);
+  const logger = resolveLogger(options.logger);
 
   const app = express();
+
+  if (config.helmet !== false) {
+    app.use(helmet(config.helmet));
+  }
+
+  app.use(createRequestLogger(logger));
 
   // Global JSON body parser — individual routes add their own raw parsers as needed
   app.use(express.json());
@@ -81,7 +93,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   app.use((_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error(err);
+    logger.error(err.message, { stack: err.stack });
     res.status(500).json({ error: 'Internal server error' });
   });
 
