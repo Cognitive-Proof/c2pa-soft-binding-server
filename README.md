@@ -1,6 +1,6 @@
 # C2PA Soft Binding Resolution API Server
 
-A Node.js/Express implementation of the [C2PA Soft Binding Resolution API v2.3.0](https://c2pa.org/specifications). This server allows clients to store C2PA Manifest Stores, associate them with soft binding values (watermarks or fingerprints), and later recover those manifests when the metadata has been stripped from an asset.
+A Node.js/Express implementation of the [C2PA Soft Binding Resolution API v2.4](https://spec.c2pa.org/specifications/specifications/2.4/softbinding/Decoupled.html). This server allows clients to store C2PA Manifest Stores, associate them with soft binding values (watermarks or fingerprints), and later recover those manifests when the metadata has been stripped from an asset.
 
 ---
 
@@ -133,7 +133,7 @@ Defines `SoftBindingServerOptions` (the `createServer()` options type) and `reso
 
 #### `src/store.ts` and `src/objectStore.ts` — pluggable data layer
 
-`loadDataStore(plugin?)` and `loadObjectStore(plugin?)` resolve a `DataStorePlugin` / `ObjectStorePlugin`: pass an instance directly, pass an npm package name to `require()`, or omit it to fall back to `DATASTORE_PLUGIN`/`OBJECTSTORE_PLUGIN` env vars and then the bundled defaults (see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins) below). `createServer()` calls `loadDataStore()` and injects the result into the route factories — routes have no direct knowledge of how or where data is persisted. `loadObjectStore()` is exported for custom routes but isn't wired into `createServer()` since no bundled route uses blob storage yet.
+`loadDataStore(plugin?)` and `loadObjectStore(plugin?)` resolve a `DataStorePlugin` / `ObjectStorePlugin`: pass an instance directly, pass an installed npm package name to `require()`, or omit it to fall back to `DATASTORE_PLUGIN`/`OBJECTSTORE_PLUGIN` and then the default MongoDB/GCS package names (see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins) below). Those plugin packages are separate installs. `createServer()` calls `loadDataStore()` and injects the result into the route factories — routes have no direct knowledge of how or where data is persisted. `loadObjectStore()` is exported for custom routes but isn't wired into `createServer()` since no bundled route uses blob storage yet.
 
 #### `src/auth.ts` — authentication middleware
 
@@ -141,11 +141,11 @@ Defines `SoftBindingServerOptions` (the `createServer()` options type) and `reso
 
 - **`auth` is an Express `RequestHandler`** — used as-is. Bring your own auth scheme entirely (API keys, sessions, a different OAuth provider, etc.).
 - **`auth` is `{ issuer, audience, jwksUri }`** — builds a generic JWT-verification middleware via `createJwtAuthMiddleware()` for any OIDC-compatible identity provider (Auth0, Okta, Cognito, etc.).
-- **`auth` is omitted** — loads the default **AuthPlugin** (an npm package implementing `AuthPlugin<string>` from `@cognitiveproof/softbinding-api-plugin-types`, resolved via `AUTH_PLUGIN` then the bundled `@cognitiveproof/softbinding-api-plugin-google-auth`) and calls it with `gcpProjectId` (from `options.gcpProjectId` or `GCP_PROJECT_ID`), which is required in this case unless `SKIP_ENV_VALIDATION` is set. The bundled Google plugin verifies `Authorization: Bearer <token>` headers as Google Identity Platform JWTs (issuer `https://securetoken.google.com/<gcpProjectId>`, audience `<gcpProjectId>`).
+- **`auth` is omitted** — loads the default **AuthPlugin** (an npm package implementing `AuthPlugin<string>` from `@cognitiveproof/softbinding-api-plugin-types`, resolved via `AUTH_PLUGIN` then the separately installed `@cognitiveproof/softbinding-api-plugin-google-auth`) and calls it with `gcpProjectId` (from `options.gcpProjectId` or `GCP_PROJECT_ID`), which is required in this case unless `SKIP_ENV_VALIDATION` is set. The Google plugin verifies `Authorization: Bearer <token>` headers as Google Identity Platform JWTs (issuer `https://securetoken.google.com/<gcpProjectId>`, audience `<gcpProjectId>`).
 
-In all cases the JWT-based middlewares fetch their JWKS once per server instance and cache/refresh keys via `jose`, returning 401 if no header is present, the token is expired, or verification fails.
+The JWT-based middlewares fetch their JWKS once per server instance and cache/refresh keys via `jose`, returning 401 if no header is present, the token is expired, or verification fails. They read scopes from the standard space-delimited `scope` claim or the string/array `scp` claim and publish them to `res.locals.c2paAuthScopes`.
 
-The spec mandates OAuth2 client credentials flow with the scope `fetch:manifests` for query/fetch routes and `store:manifests`/`store:bindings` for write routes — a custom `auth` middleware can enforce scopes if needed.
+The route layer returns 403 unless JWT-authenticated requests have the scope required by the specification: `fetch:manifests` for query/fetch routes, `store:manifests` for manifest ingestion/deletion, and `store:bindings` for binding creation/update. The bundled Google plugin requires these values to be configured as custom token claims. A fully custom `auth` middleware remains responsible for its own authorization; it can opt into the same route guards by setting `res.locals.c2paAuthScopes` to a string array.
 
 #### `src/logger.ts` — structured logging
 
@@ -155,7 +155,7 @@ The spec mandates OAuth2 client credentials flow with the scope `fetch:manifests
 - **`logger` is a package name, or `LOGGER_PLUGIN` is set** — loads an npm package implementing `LoggerPlugin` (e.g. the optional `@cognitiveproof/softbinding-api-plugin-pino-logger`).
 - **`logger` is omitted and `LOGGER_PLUGIN` is unset** — falls back to `createConsoleLogger()`, a built-in logger that writes JSON lines (`level`, `time`, `msg`, plus any metadata) to stdout (`debug`/`info`/`warn`) or stderr (`error`) — no extra dependencies required.
 
-`createServer()` mounts `createRequestLogger(logger)` as the first middleware, which logs `{ method, path, status, durationMs }` for every request once the response finishes, and the error handler logs uncaught route errors via `logger.error()` instead of `console.error()`.
+`createServer()` mounts `createRequestLogger(logger)` as the first middleware, which logs `{ method, path, status, durationMs }` for every request once the response finishes. The error handler returns 413 for bodies exceeding the configured JSON/raw upload limits, 400 for malformed JSON, and logs other uncaught route errors via `logger.error()` instead of `console.error()`.
 
 #### Security headers (`helmet`)
 
@@ -200,7 +200,7 @@ Each route file exports a `createXRouter(deps)` factory that returns a plain Exp
 
 Body parsing is applied per-route rather than globally:
 
-- JSON routes use the global `express.json()` applied in `createServer()`
+- JSON routes use the global `express.json({ limit: maxJsonSize })` applied in `createServer()`
 - `POST /manifests` adds `express.raw({ type: 'application/c2pa' })`
 - `POST /matches/byContent` adds `express.raw()` with a content-type guard that accepts any `image/*`, `audio/*`, `video/*`, `application/*`, `model/*`, or `text/*` MIME type
 
@@ -249,6 +249,7 @@ npm run dev      # development with auto-reload (requires nodemon)
 | `REPO_URI`               | `http://localhost:3000`                              | Public base URI of this repository, used in receipts (`repoUri`)                                                          |
 | `RECEIPT_SECRET`         | random                                               | Secret for signing receipts — must be set for receipts to survive restart (`receiptSecret`)                               |
 | `MAX_UPLOAD_SIZE`        | `52428800`                                           | Max direct upload size in bytes (50 MB) (`maxUploadSize`)                                                                 |
+| `MAX_JSON_SIZE`          | `10485760`                                           | Max JSON request body size in bytes (10 MB) (`maxJsonSize`)                                                               |
 | `MAX_REFERENCE_SIZE`     | `104857600`                                          | Max download size for byReference in bytes (100 MB) (`maxReferenceSize`)                                                  |
 | `DATASTORE_PLUGIN`       | `@cognitiveproof/softbinding-api-plugin-mongodb`     | npm package implementing `DataStorePlugin` (`dataStore`)                                                                  |
 | `OBJECTSTORE_PLUGIN`     | `@cognitiveproof/softbinding-api-plugin-gcp-bucket`  | npm package implementing `ObjectStorePlugin` (`objectStore`)                                                              |
@@ -266,7 +267,9 @@ Each storage plugin reads its own additional environment variables — see [Stor
 Install the package and call `createServer(options)` to get a configured `express.Express` app — mount it inside an existing app, or call `.listen()` yourself:
 
 ```bash
-npm install @cognitiveproof/softbinding-api-server
+npm install @cognitiveproof/softbinding-api-server \
+  @cognitiveproof/softbinding-api-plugin-sqlite \
+  @cognitiveproof/softbinding-api-plugin-google-auth
 ```
 
 ```ts
@@ -297,23 +300,23 @@ c2paApp.listen(3000);
 
 `SoftBindingServerOptions` (all optional, each falls back to an environment variable — see the table above):
 
-| Option                               | Type                                                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `repoUri`                            | `string`                                                                                                                  |
-| `receiptSecret`                      | `string`                                                                                                                  |
-| `maxUploadSize` / `maxReferenceSize` | `number`                                                                                                                  |
-| `dataStore`                          | `DataStorePlugin \| string`                                                                                               |
-| `objectStore`                        | `ObjectStorePlugin \| string`                                                                                             |
-| `gcpProjectId`                       | `string` — used by the default Google Identity Platform auth                                                              |
-| `auth`                               | `RequestHandler \| { issuer, audience, jwksUri }` — overrides the default auth (see below)                                |
-| `extractors`                         | `Record<string, Extractor>`                                                                                               |
-| `docs`                               | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json`                                                        |
-| `logger`                             | `Logger \| string` — overrides the default console JSON logger (see below)                                                |
-| `helmet`                             | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults)   |
-| `rateLimit`                          | `Partial<RateLimitOptions> \| false` — customizes or disables rate limiting on `/v1` (default: 100 requests/15min per IP) |
-| `rateLimitStore`                     | `Store \| string` — shared rate limit store (e.g. Redis) for multi-instance deployments                                   |
+| Option                                               | Type                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `repoUri`                                            | `string`                                                                                                                  |
+| `receiptSecret`                                      | `string`                                                                                                                  |
+| `maxUploadSize` / `maxJsonSize` / `maxReferenceSize` | `number`                                                                                                                  |
+| `dataStore`                                          | `DataStorePlugin \| string`                                                                                               |
+| `objectStore`                                        | `ObjectStorePlugin \| string`                                                                                             |
+| `gcpProjectId`                                       | `string` — used by the default Google Identity Platform auth                                                              |
+| `auth`                                               | `RequestHandler \| { issuer, audience, jwksUri }` — overrides the default auth (see below)                                |
+| `extractors`                                         | `Record<string, Extractor>`                                                                                               |
+| `docs`                                               | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json`                                                        |
+| `logger`                                             | `Logger \| string` — overrides the default console JSON logger (see below)                                                |
+| `helmet`                                             | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults)   |
+| `rateLimit`                                          | `Partial<RateLimitOptions> \| false` — customizes or disables rate limiting on `/v1` (default: 100 requests/15min per IP) |
+| `rateLimitStore`                                     | `Store \| string` — shared rate limit store (e.g. Redis) for multi-instance deployments                                   |
 
-By default, `/v1` routes require a Google Identity Platform JWT for `gcpProjectId`. To use a different identity provider or auth scheme, pass `auth`:
+By default, `/v1` routes require a Google Identity Platform JWT for `gcpProjectId` with the route's required scope in a `scope` or `scp` custom claim. To use a different identity provider or auth scheme, pass `auth`:
 
 ```ts
 // Any OIDC-compatible provider (Auth0, Okta, Cognito, ...):
@@ -329,7 +332,10 @@ createServer({
 // Or a fully custom Express middleware:
 createServer({
   auth: (req, res, next) => {
-    if (req.headers['x-api-key'] === process.env.API_KEY) return next();
+    if (req.headers['x-api-key'] === process.env.API_KEY) {
+      res.locals.c2paAuthScopes = ['fetch:manifests', 'store:manifests', 'store:bindings'];
+      return next();
+    }
     res.status(401).json({ error: 'Unauthorized' });
   },
   // ...
@@ -374,7 +380,7 @@ createServer({
 });
 ```
 
-The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStorePlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, and `createConsoleLogger` helpers.
+The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStorePlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, `AuthScope`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, `requireAuthScope`, `AUTH_SCOPES_LOCALS_KEY`, and `createConsoleLogger` helpers.
 
 ---
 
@@ -384,11 +390,11 @@ Persistence, the default authentication scheme, logging, and rate limit storage 
 
 - **`DataStorePlugin`** — stores C2PA Manifest Stores, soft binding associations, and receipts (`addManifest`, `getManifest`, `findByBinding`, `createBinding`, etc.)
 - **`ObjectStorePlugin`** — stores arbitrary binary blobs in a "data" bucket and a "public" bucket (`saveData`, `loadData`, `getPublicUrl`, etc.)
-- **`AuthPlugin<TConfig>`** — builds the Express middleware used to authenticate `/v1` requests when `auth` isn't passed to `createServer()`, given a config value (`gcpProjectId` for the bundled plugin)
+- **`AuthPlugin<TConfig>`** — builds the Express middleware used to authenticate `/v1` requests when `auth` isn't passed to `createServer()`, given a config value (`gcpProjectId` for the Google plugin)
 - **`LoggerPlugin<TConfig>`** — builds the `Logger` used for request logging and error reporting when `logger` isn't passed to `createServer()`, given an implementation-specific config value (e.g. a log level)
 - **`RateLimitStorePlugin<TConfig>`** — builds the express-rate-limit `Store` used to share rate limit counters across instances when `rateLimitStore` isn't passed to `createServer()`, given a config value (e.g. a Redis URL)
 
-`createServer()` resolves the data store plugin via `loadDataStore()` (an instance passed as `options.dataStore`, an npm package name, or `DATASTORE_PLUGIN`/the bundled default), the default auth plugin via `AUTH_PLUGIN`/the bundled default, the logger via `resolveLogger()` (`options.logger`, `LOGGER_PLUGIN`, or the built-in console logger), and the rate limit store via `resolveRateLimitStore()` (`options.rateLimitStore`, `RATELIMIT_STORE_PLUGIN`, or express-rate-limit's in-memory store), injecting the results into the route factories. Route code never imports a plugin directly.
+`createServer()` resolves the data store plugin via `loadDataStore()` (an instance passed as `options.dataStore`, an npm package name, or `DATASTORE_PLUGIN`/the default MongoDB package name), the auth plugin via `AUTH_PLUGIN`/the default Google auth package name, the logger via `resolveLogger()` (`options.logger`, `LOGGER_PLUGIN`, or the built-in console logger), and the rate limit store via `resolveRateLimitStore()` (`options.rateLimitStore`, `RATELIMIT_STORE_PLUGIN`, or express-rate-limit's in-memory store), injecting the results into the route factories. Plugin packages must be installed separately. Route code never imports a plugin directly.
 
 ### Bundled plugins
 
@@ -411,10 +417,18 @@ These live in this repo as npm workspaces under `plugins/`, but are ordinary npm
 
 ### Installing only the plugins you need
 
-The bundled plugins are listed as `optionalDependencies` of `@cognitiveproof/softbinding-api-server`, not regular dependencies — installing the server does **not** pull in every database driver and cloud SDK. Install only the plugin(s) your deployment uses:
+The bundled plugins are published as separate packages and declared as optional peer dependencies of `@cognitiveproof/softbinding-api-server`. Installing the server does **not** install every database driver and cloud SDK. Install the server together with only the plugin packages your deployment uses:
 
 ```bash
 npm install @cognitiveproof/softbinding-api-server @cognitiveproof/softbinding-api-plugin-sqlite
+```
+
+The standalone CLI needs both a data store and an auth implementation. For example, the default MongoDB and Google Identity Platform configuration is installed with:
+
+```bash
+npm install @cognitiveproof/softbinding-api-server \
+  @cognitiveproof/softbinding-api-plugin-mongodb \
+  @cognitiveproof/softbinding-api-plugin-google-auth
 ```
 
 ```ts
@@ -423,21 +437,23 @@ createServer({
 });
 ```
 
-If `loadDataStore`/`loadObjectStore`/the auth plugin loader/the logger plugin loader/the rate limit store plugin loader can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`. Note that `@cognitiveproof/softbinding-api-plugin-google-auth` is only required when relying on the default Google auth (i.e. when `auth` is not passed to `createServer()`) — passing `auth` makes it unnecessary. Likewise, `@cognitiveproof/softbinding-api-plugin-pino-logger` and `@cognitiveproof/softbinding-api-plugin-redis-rate-limit` are only required when `logger`/`LOGGER_PLUGIN` or `rateLimitStore`/`RATELIMIT_STORE_PLUGIN` reference them — by default `createServer()` uses the built-in console logger and an in-memory rate limit store, needing no extra plugins at all.
+If `loadDataStore`/`loadObjectStore`/the auth plugin loader/the logger plugin loader/the rate limit store plugin loader can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`. `@cognitiveproof/softbinding-api-plugin-google-auth` is required only when relying on the default Google auth; passing `auth` makes it unnecessary. Likewise, the pino logger and Redis rate-limit plugins are required only when selected explicitly. The server has built-in console logging and in-memory rate limiting.
 
 ### Switching backends
 
-To use a different backend (e.g., PostgreSQL or S3), implement `DataStorePlugin`/`ObjectStorePlugin` in a new package, install it as a dependency, and point the relevant env var at its package name:
+To switch backends, install one of the provided PostgreSQL, MySQL, SQLite, MongoDB, GCS, or S3 packages and point the relevant option or environment variable at its package name:
 
 ```bash
-npm install @your-org/softbinding-api-plugin-postgres
+npm install @cognitiveproof/softbinding-api-plugin-postgres
 ```
 
 ```env
-DATASTORE_PLUGIN=@your-org/softbinding-api-plugin-postgres
+DATASTORE_PLUGIN=@cognitiveproof/softbinding-api-plugin-postgres
 ```
 
-A plugin package must export a default object implementing the corresponding interface:
+The plugin is loaded at runtime without server code changes. Implement a custom `DataStorePlugin` or `ObjectStorePlugin` only when the provided backends do not cover the deployment.
+
+Custom plugin packages must export a default object implementing the corresponding interface:
 
 ```ts
 import type { DataStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
@@ -504,15 +520,17 @@ const watermarked = encode(bindingValue, articleText);
 
 ## Production Considerations
 
-| Concern                    | Current approach             | Production recommendation                                                                                                                                                     |
-| -------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Persistence**            | MongoDB + GCS plugins        | Implement `DataStorePlugin`/`ObjectStorePlugin` for PostgreSQL, S3, etc. — see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins) |
-| **Authentication**         | Google Identity Platform JWT | OAuth2 client credentials with JWT verification (already implemented)                                                                                                         |
-| **Receipts**               | HMAC-SHA256                  | Anchor to a transparency log or blockchain                                                                                                                                    |
-| **SSRF**                   | DNS-based IP blocking        | Add signed URL enforcement and network egress controls                                                                                                                        |
-| **Rate limiting**          | None                         | Add per-client rate limiting (e.g., `express-rate-limit`)                                                                                                                     |
-| **TLS**                    | None (plain HTTP)            | Terminate TLS at a reverse proxy (nginx, Caddy, etc.)                                                                                                                         |
-| **`byContent` extraction** | Plugin stubs                 | Integrate real watermark/fingerprint vendor SDKs                                                                                                                              |
+| Concern                    | Current approach                                            | Production recommendation                                                                                               |
+| -------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Persistence**            | MongoDB, PostgreSQL, MySQL, and SQLite data store plugins   | Select the backend appropriate for durability, backups, scaling, and operational ownership                              |
+| **Object storage**         | Google Cloud Storage and S3-compatible object store plugins | Configure bucket lifecycle, encryption, access controls, and regional availability                                      |
+| **Authentication**         | Google Identity Platform or generic OIDC JWT verification   | Use OAuth2 client credentials, issue required scopes, and rotate provider credentials                                   |
+| **Receipts**               | HMAC-SHA256                                                 | Set a persistent `RECEIPT_SECRET`; use an external transparency log when independently verifiable receipts are required |
+| **SSRF**                   | HTTPS-only URLs, redirect validation, and IP-range blocking | Add signed URL enforcement and network-level egress controls                                                            |
+| **Rate limiting**          | `express-rate-limit`, 100 requests per 15 minutes per IP    | Tune limits and use the Redis rate-limit store or an upstream gateway for multiple instances                            |
+| **Request limits**         | Configurable JSON, upload, and remote-download size limits  | Set limits for expected assets and enforce matching limits at the reverse proxy                                         |
+| **TLS**                    | Application serves plain HTTP                               | Terminate TLS at a trusted reverse proxy or managed load balancer                                                       |
+| **`byContent` extraction** | Extractor interface and variation-selector text plugin      | Integrate supported watermark/fingerprint vendor SDKs and monitor extraction cost, latency, and failures                |
 
 ---
 

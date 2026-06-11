@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: Typecheck and test
+    name: Validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,12 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
       - run: npm run typecheck
+        env:
+          SKIP_ENV_VALIDATION: 1
+      - run: npm run build
         env:
           SKIP_ENV_VALIDATION: 1
       - run: npm test

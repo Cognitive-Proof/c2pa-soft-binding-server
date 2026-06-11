@@ -17,6 +17,8 @@ export interface SoftBindingServerOptions {
   receiptSecret?: string;
   /** Max size (bytes) of a directly-uploaded asset. Default: MAX_UPLOAD_SIZE env var, else 50MB. */
   maxUploadSize?: number;
+  /** Max size (bytes) of JSON request bodies. Default: MAX_JSON_SIZE env var, else 10MB. */
+  maxJsonSize?: number;
   /** Max size (bytes) of an asset downloaded via byReference. Default: MAX_REFERENCE_SIZE env var, else 100MB. */
   maxReferenceSize?: number;
   /** A DataStorePlugin instance, or the name of an npm package implementing one. Default: DATASTORE_PLUGIN env var, else the bundled MongoDB plugin. */
@@ -68,6 +70,7 @@ export interface ResolvedConfig {
   repoUri: string;
   receiptSecret: string;
   maxUploadSize: number;
+  maxJsonSize: number;
   maxReferenceSize: number;
   docs: boolean;
   helmet: HelmetOptions | false;
@@ -80,6 +83,7 @@ export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedC
     receiptSecret:
       options.receiptSecret ?? process.env.RECEIPT_SECRET ?? crypto.randomBytes(32).toString('hex'),
     maxUploadSize: options.maxUploadSize ?? parseInt(process.env.MAX_UPLOAD_SIZE ?? '52428800', 10),
+    maxJsonSize: options.maxJsonSize ?? parseInt(process.env.MAX_JSON_SIZE ?? '10485760', 10),
     maxReferenceSize:
       options.maxReferenceSize ?? parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10),
     docs: options.docs ?? true,

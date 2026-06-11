@@ -55,6 +55,78 @@ describe('createServer', () => {
     expect(res.status).toBe(401);
   });
 
+  it('enforces the scope published by auth middleware before route handlers run', async () => {
+    const dataStore = createFakeDataStore();
+    const createBinding = jest.spyOn(dataStore, 'createBinding');
+    const app = createServer({
+      dataStore,
+      auth: (_req, res, next) => {
+        res.locals.c2paAuthScopes = ['fetch:manifests'];
+        next();
+      },
+      docs: false,
+    });
+
+    const fetchRes = await request(app).get('/v1/matches/byBinding?value=abc&alg=test');
+    const storeRes = await request(app)
+      .post('/v1/bindings')
+      .send({ bindingValue: 'abc', manifestId: 'manifest-id' });
+
+    expect(fetchRes.status).toBe(200);
+    expect(storeRes.status).toBe(403);
+    expect(storeRes.body).toEqual({ error: 'Missing required scope: store:bindings' });
+    expect(createBinding).not.toHaveBeenCalled();
+  });
+
+  it('returns 413 when a JSON request exceeds maxJsonSize', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      maxJsonSize: 32,
+    });
+
+    const res = await request(app)
+      .post('/v1/matches/byBinding')
+      .send({ value: 'x'.repeat(100), alg: 'test' });
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'Request body exceeds the configured size limit' });
+  });
+
+  it('returns 413 when a raw asset exceeds maxUploadSize', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      maxUploadSize: 4,
+    });
+
+    const res = await request(app)
+      .post('/v1/matches/byContent')
+      .set('Content-Type', 'image/png')
+      .send(Buffer.from('too-large'));
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'Request body exceeds the configured size limit' });
+  });
+
+  it('returns 400 for malformed JSON', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+    });
+
+    const res = await request(app)
+      .post('/v1/matches/byBinding')
+      .set('Content-Type', 'application/json')
+      .send('{"value":');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Malformed JSON request body' });
+  });
+
   it('applies helmet security headers by default', async () => {
     const app = createServer({ dataStore: createFakeDataStore(), auth: allowAll, docs: false });
 

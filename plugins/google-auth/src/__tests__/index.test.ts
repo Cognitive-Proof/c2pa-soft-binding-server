@@ -16,7 +16,7 @@ jest.mock('jose', () => ({
 import createGoogleAuthMiddleware from '../index';
 
 function createMockRes() {
-  const res: Partial<Response> = {};
+  const res: Partial<Response> = { locals: {} };
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
   return res as Response;
@@ -81,7 +81,9 @@ describe('createGoogleAuthMiddleware', () => {
   });
 
   it('calls next() when the token is valid', async () => {
-    jwtVerifyMock.mockResolvedValue({ payload: {} });
+    jwtVerifyMock.mockResolvedValue({
+      payload: { scope: 'openid fetch:manifests', scp: ['store:bindings'] },
+    });
     const middleware = createGoogleAuthMiddleware('my-project');
     const req = { headers: { authorization: 'Bearer valid-token' } } as Request;
     const res = createMockRes();
@@ -91,6 +93,7 @@ describe('createGoogleAuthMiddleware', () => {
 
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
+    expect(res.locals.c2paAuthScopes).toEqual(['openid', 'fetch:manifests', 'store:bindings']);
   });
 
   it('returns 401 "Token expired" when jose throws JWTExpired', async () => {

@@ -1,5 +1,48 @@
-import type { RequestHandler } from 'express';
-import { resolveAuthMiddleware } from '../auth';
+import express, { type RequestHandler } from 'express';
+import request from 'supertest';
+import { requireAuthScope, resolveAuthMiddleware } from '../auth';
+
+describe('requireAuthScope', () => {
+  it('allows a request with the required scope', async () => {
+    const app = express();
+    app.get(
+      '/',
+      (_req, res, next) => {
+        res.locals.c2paAuthScopes = ['fetch:manifests'];
+        next();
+      },
+      requireAuthScope('fetch:manifests'),
+      (_req, res) => res.sendStatus(204),
+    );
+
+    expect((await request(app).get('/')).status).toBe(204);
+  });
+
+  it('returns 403 when the authenticated request lacks the required scope', async () => {
+    const app = express();
+    app.get(
+      '/',
+      (_req, res, next) => {
+        res.locals.c2paAuthScopes = ['fetch:manifests'];
+        next();
+      },
+      requireAuthScope('store:bindings'),
+      (_req, res) => res.sendStatus(204),
+    );
+
+    const res = await request(app).get('/');
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Missing required scope: store:bindings' });
+  });
+
+  it('leaves authorization to custom middleware that does not publish scopes', async () => {
+    const app = express();
+    app.get('/', requireAuthScope('store:manifests'), (_req, res) => res.sendStatus(204));
+
+    expect((await request(app).get('/')).status).toBe(204);
+  });
+});
 
 describe('resolveAuthMiddleware', () => {
   const ENV = process.env;

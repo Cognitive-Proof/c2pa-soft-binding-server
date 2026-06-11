@@ -3,7 +3,7 @@ import type { AddressInfo } from 'net';
 import express from 'express';
 import request from 'supertest';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
-import { createJwtAuthMiddleware } from '../auth';
+import { createJwtAuthMiddleware, requireAuthScope } from '../auth';
 
 const ISSUER = 'https://issuer.example.com/';
 const AUDIENCE = 'my-audience';
@@ -35,6 +35,9 @@ describe('createJwtAuthMiddleware', () => {
     const middleware = createJwtAuthMiddleware({ issuer: ISSUER, audience: AUDIENCE, jwksUri });
     app = express();
     app.get('/protected', middleware, (_req, res) => res.json({ ok: true }));
+    app.get('/fetch', middleware, requireAuthScope('fetch:manifests'), (_req, res) =>
+      res.json({ ok: true }),
+    );
   });
 
   afterAll(() => {
@@ -42,10 +45,25 @@ describe('createJwtAuthMiddleware', () => {
   });
 
   function signToken(
-    overrides: { issuer?: string; audience?: string; expSecondsFromNow?: number } = {},
+    overrides: {
+      issuer?: string;
+      audience?: string;
+      expSecondsFromNow?: number;
+      scope?: string;
+      scp?: string | string[];
+    } = {},
   ) {
-    const { issuer = ISSUER, audience = AUDIENCE, expSecondsFromNow = 3600 } = overrides;
-    return new SignJWT({})
+    const {
+      issuer = ISSUER,
+      audience = AUDIENCE,
+      expSecondsFromNow = 3600,
+      scope,
+      scp,
+    } = overrides;
+    return new SignJWT({
+      ...(scope === undefined ? {} : { scope }),
+      ...(scp === undefined ? {} : { scp }),
+    })
       .setProtectedHeader({ alg: 'RS256', kid: KID })
       .setIssuer(issuer)
       .setAudience(audience)
@@ -75,6 +93,31 @@ describe('createJwtAuthMiddleware', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
+  });
+
+  it('allows a scoped route when scope contains the required value', async () => {
+    const token = await signToken({ scope: 'openid fetch:manifests' });
+
+    const res = await request(app).get('/fetch').set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts an scp array claim', async () => {
+    const token = await signToken({ scp: ['fetch:manifests'] });
+
+    const res = await request(app).get('/fetch').set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 403 when a valid token has no required scope', async () => {
+    const token = await signToken({ scope: 'store:bindings' });
+
+    const res = await request(app).get('/fetch').set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Missing required scope: fetch:manifests' });
   });
 
   it('returns 401 with "Token expired" for an expired token', async () => {

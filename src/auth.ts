@@ -2,6 +2,10 @@ import { createRemoteJWKSet, jwtVerify, errors as joseErrors } from 'jose';
 import type { RequestHandler } from 'express';
 import type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 
+export const AUTH_SCOPES_LOCALS_KEY = 'c2paAuthScopes';
+
+export type AuthScope = 'fetch:manifests' | 'store:manifests' | 'store:bindings';
+
 export interface JwtAuthOptions {
   /** Expected `iss` claim. */
   issuer: string;
@@ -9,6 +13,42 @@ export interface JwtAuthOptions {
   audience: string;
   /** URL of the identity provider's JWKS endpoint. */
   jwksUri: string;
+}
+
+function extractScopes(payload: Record<string, unknown>): string[] {
+  const scopes = new Set<string>();
+
+  for (const claim of [payload.scope, payload.scp]) {
+    if (typeof claim === 'string') {
+      for (const scope of claim.split(/\s+/)) {
+        if (scope) scopes.add(scope);
+      }
+    } else if (Array.isArray(claim)) {
+      for (const scope of claim) {
+        if (typeof scope === 'string' && scope) scopes.add(scope);
+      }
+    }
+  }
+
+  return [...scopes];
+}
+
+export function requireAuthScope(requiredScope: AuthScope): RequestHandler {
+  return (_req, res, next) => {
+    if (!Object.prototype.hasOwnProperty.call(res.locals, AUTH_SCOPES_LOCALS_KEY)) {
+      // Custom auth middleware remains responsible for its own authorization.
+      next();
+      return;
+    }
+
+    const scopes = res.locals[AUTH_SCOPES_LOCALS_KEY] as unknown;
+    if (Array.isArray(scopes) && scopes.includes(requiredScope)) {
+      next();
+      return;
+    }
+
+    res.status(403).json({ error: `Missing required scope: ${requiredScope}` });
+  };
 }
 
 /**
@@ -29,7 +69,8 @@ export function createJwtAuthMiddleware(options: JwtAuthOptions): RequestHandler
     }
 
     try {
-      await jwtVerify(header.slice(7), JWKS, { issuer, audience });
+      const { payload } = await jwtVerify(header.slice(7), JWKS, { issuer, audience });
+      res.locals[AUTH_SCOPES_LOCALS_KEY] = extractScopes(payload);
       next();
     } catch (err) {
       if (err instanceof joseErrors.JWTExpired) {

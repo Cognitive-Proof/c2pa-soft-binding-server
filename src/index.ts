@@ -27,15 +27,21 @@ export type {
 } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { Extractor, SupportedAlgorithms, SoftBindingRegistry } from './softBinding';
 export type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
-export type { JwtAuthOptions } from './auth';
+export type { AuthScope, JwtAuthOptions } from './auth';
 export type { Logger, LoggerPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { HelmetOptions } from 'helmet';
 export type { Options as RateLimitOptions, Store as RateLimitStore } from 'express-rate-limit';
 export type { RateLimitStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export { loadDataStore } from './store';
 export { loadObjectStore } from './objectStore';
-export { createJwtAuthMiddleware } from './auth';
+export { AUTH_SCOPES_LOCALS_KEY, createJwtAuthMiddleware, requireAuthScope } from './auth';
 export { createConsoleLogger } from './logger';
+
+interface BodyParserError extends Error {
+  type?: string;
+  status?: number;
+  statusCode?: number;
+}
 
 /**
  * Builds a configured C2PA Soft Binding Resolution API Express app.
@@ -61,7 +67,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   app.use(createRequestLogger(logger));
 
   // Global JSON body parser — individual routes add their own raw parsers as needed
-  app.use(express.json());
+  app.use(express.json({ limit: config.maxJsonSize }));
 
   app.get('/', (_req, res) => res.send('C2PA-Softbinding-Server - Healthy'));
 
@@ -104,7 +110,16 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
 
   app.use((_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: BodyParserError, _req: Request, res: Response, _next: NextFunction) => {
+    if (err.type === 'entity.too.large') {
+      res.status(413).json({ error: 'Request body exceeds the configured size limit' });
+      return;
+    }
+    if (err.type === 'entity.parse.failed') {
+      res.status(400).json({ error: 'Malformed JSON request body' });
+      return;
+    }
+
     logger.error(err.message, { stack: err.stack });
     res.status(500).json({ error: 'Internal server error' });
   });

@@ -1,6 +1,7 @@
 import express, { Request, RequestHandler, Response, Router } from 'express';
 import crypto from 'crypto';
 import type { DataStorePlugin, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
+import { requireAuthScope } from '../auth';
 
 export interface StoreRouterDeps {
   dataStore: DataStorePlugin;
@@ -12,6 +13,8 @@ export interface StoreRouterDeps {
 export function createStoreRouter(deps: StoreRouterDeps): Router {
   const { dataStore, auth, repoUri, receiptSecret } = deps;
   const router = express.Router();
+  const requireManifestScope = requireAuthScope('store:manifests');
+  const requireBindingScope = requireAuthScope('store:bindings');
 
   // Body parser for C2PA Manifest Store blobs
   const c2paBody = express.raw({ type: 'application/c2pa', limit: '100mb' });
@@ -40,33 +43,39 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
   }
 
   // POST /manifests  — ingest a C2PA Manifest Store
-  router.post('/manifests', auth, c2paBody, async (req: Request, res: Response) => {
-    const returnReceipt = req.query.returnReceipt === 'true';
+  router.post(
+    '/manifests',
+    auth,
+    requireManifestScope,
+    c2paBody,
+    async (req: Request, res: Response) => {
+      const returnReceipt = req.query.returnReceipt === 'true';
 
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'Request body must be a non-empty application/c2pa blob' });
-    }
-
-    try {
-      const manifestId = await dataStore.addManifest(req.body as Buffer, 'application/c2pa');
-      const result: { manifestId: string; receipt?: Receipt } = { manifestId };
-
-      if (returnReceipt) {
-        const receipt = buildReceipt(manifestId);
-        await dataStore.setReceipt(manifestId, receipt);
-        result.receipt = receipt;
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'Request body must be a non-empty application/c2pa blob' });
       }
 
-      return res.status(200).json(result);
-    } catch {
-      return res.status(500).json({ error: 'Service failure' });
-    }
-  });
+      try {
+        const manifestId = await dataStore.addManifest(req.body as Buffer, 'application/c2pa');
+        const result: { manifestId: string; receipt?: Receipt } = { manifestId };
+
+        if (returnReceipt) {
+          const receipt = buildReceipt(manifestId);
+          await dataStore.setReceipt(manifestId, receipt);
+          result.receipt = receipt;
+        }
+
+        return res.status(200).json(result);
+      } catch {
+        return res.status(500).json({ error: 'Service failure' });
+      }
+    },
+  );
 
   // POST /bindings  — associate a soft binding value with a stored manifest
-  router.post('/bindings', auth, async (req: Request, res: Response) => {
+  router.post('/bindings', auth, requireBindingScope, async (req: Request, res: Response) => {
     const { bindingValue, manifestId } = (req.body ?? {}) as Record<string, string | undefined>;
 
     if (!bindingValue || !manifestId) {
@@ -85,7 +94,7 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
   });
 
   // PUT /bindings  — replace an existing soft binding's manifest pointer
-  router.put('/bindings', auth, async (req: Request, res: Response) => {
+  router.put('/bindings', auth, requireBindingScope, async (req: Request, res: Response) => {
     const { bindingValue, manifestId } = (req.body ?? {}) as Record<string, string | undefined>;
 
     if (!bindingValue || !manifestId) {
@@ -104,17 +113,22 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
   });
 
   // DELETE /manifests/:manifestId  — remove a manifest and its bindings
-  router.delete('/manifests/:manifestId', auth, async (req: Request, res: Response) => {
-    try {
-      const ok = await dataStore.deleteManifest(req.params.manifestId);
-      if (!ok) {
-        return res.status(404).json({ error: 'C2PA Manifest Store not found' });
+  router.delete(
+    '/manifests/:manifestId',
+    auth,
+    requireManifestScope,
+    async (req: Request, res: Response) => {
+      try {
+        const ok = await dataStore.deleteManifest(req.params.manifestId);
+        if (!ok) {
+          return res.status(404).json({ error: 'C2PA Manifest Store not found' });
+        }
+        return res.status(204).send();
+      } catch {
+        return res.status(500).json({ error: 'Service failure' });
       }
-      return res.status(204).send();
-    } catch {
-      return res.status(500).json({ error: 'Service failure' });
-    }
-  });
+    },
+  );
 
   return router;
 }

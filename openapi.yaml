@@ -12,7 +12,8 @@ servers:
   - url: /v1
 
 security:
-  - bearerAuth: []
+  - oauth2:
+      - fetch:manifests
 
 tags:
   - name: Query
@@ -41,6 +42,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/ServiceFailure'
     post:
@@ -71,6 +74,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/ServiceFailure'
 
@@ -118,6 +125,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           description: Unsupported asset type
           content:
@@ -164,6 +175,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '502':
           description: Failed to fetch the reference URL
           content:
@@ -178,6 +193,9 @@ paths:
       tags: [Store]
       summary: Ingest a C2PA Manifest Store
       operationId: postManifest
+      security:
+        - oauth2:
+            - store:manifests
       parameters:
         - name: returnReceipt
           in: query
@@ -209,6 +227,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/ServiceFailure'
 
@@ -217,6 +239,9 @@ paths:
       tags: [Store]
       summary: Associate a soft binding value with a stored manifest
       operationId: createBinding
+      security:
+        - oauth2:
+            - store:bindings
       requestBody:
         $ref: '#/components/requestBodies/Binding'
       responses:
@@ -226,6 +251,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '404':
           description: Soft binding id or C2PA Manifest id not found
           content:
@@ -238,6 +267,9 @@ paths:
       tags: [Store]
       summary: Replace the manifest a soft binding value points to
       operationId: updateBinding
+      security:
+        - oauth2:
+            - store:bindings
       requestBody:
         $ref: '#/components/requestBodies/Binding'
       responses:
@@ -247,6 +279,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '404':
           description: Soft binding value not found
           content:
@@ -273,6 +309,8 @@ paths:
                 format: binary
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: C2PA Manifest not found
           content:
@@ -285,6 +323,9 @@ paths:
       tags: [Store]
       summary: Remove a manifest and its associated bindings
       operationId: deleteManifest
+      security:
+        - oauth2:
+            - store:manifests
       parameters:
         - $ref: '#/components/parameters/manifestId'
       responses:
@@ -292,6 +333,8 @@ paths:
           description: Manifest deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: C2PA Manifest Store not found
           content:
@@ -317,6 +360,8 @@ paths:
                 $ref: '#/components/schemas/Receipt'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: C2PA Manifest Store or receipt not found
           content:
@@ -348,6 +393,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '404':
           description: C2PA Manifest not found
           content:
@@ -384,10 +433,16 @@ paths:
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    oauth2:
+      type: oauth2
+      description: OAuth2 client credentials. Configure the token URL for your identity provider.
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.example.com/oauth/token
+          scopes:
+            fetch:manifests: Query and fetch manifests and receipts
+            store:manifests: Store and delete manifests
+            store:bindings: Create and update soft bindings
 
   parameters:
     value:
@@ -478,6 +533,18 @@ components:
             $ref: '#/components/schemas/Error'
     Unauthorized:
       description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The authenticated principal lacks the required authorization scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLarge:
+      description: Request body exceeds the configured size limit
       content:
         application/json:
           schema:

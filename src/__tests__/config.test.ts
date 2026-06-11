@@ -8,6 +8,7 @@ describe('resolveConfig', () => {
     delete process.env.REPO_URI;
     delete process.env.RECEIPT_SECRET;
     delete process.env.MAX_UPLOAD_SIZE;
+    delete process.env.MAX_JSON_SIZE;
     delete process.env.MAX_REFERENCE_SIZE;
   });
 
@@ -20,6 +21,7 @@ describe('resolveConfig', () => {
 
     expect(config.repoUri).toBe('http://localhost:3000');
     expect(config.maxUploadSize).toBe(52428800);
+    expect(config.maxJsonSize).toBe(10485760);
     expect(config.maxReferenceSize).toBe(104857600);
     expect(config.docs).toBe(true);
     expect(typeof config.receiptSecret).toBe('string');
@@ -33,6 +35,7 @@ describe('resolveConfig', () => {
       repoUri: 'https://from-options.example.com',
       receiptSecret: 'my-secret',
       maxUploadSize: 1234,
+      maxJsonSize: 3456,
       maxReferenceSize: 5678,
       docs: false,
     });
@@ -40,6 +43,7 @@ describe('resolveConfig', () => {
     expect(config.repoUri).toBe('https://from-options.example.com');
     expect(config.receiptSecret).toBe('my-secret');
     expect(config.maxUploadSize).toBe(1234);
+    expect(config.maxJsonSize).toBe(3456);
     expect(config.maxReferenceSize).toBe(5678);
     expect(config.docs).toBe(false);
   });
@@ -48,6 +52,7 @@ describe('resolveConfig', () => {
     process.env.REPO_URI = 'https://from-env.example.com';
     process.env.RECEIPT_SECRET = 'env-secret';
     process.env.MAX_UPLOAD_SIZE = '111';
+    process.env.MAX_JSON_SIZE = '333';
     process.env.MAX_REFERENCE_SIZE = '222';
 
     const config = resolveConfig();
@@ -55,6 +60,7 @@ describe('resolveConfig', () => {
     expect(config.repoUri).toBe('https://from-env.example.com');
     expect(config.receiptSecret).toBe('env-secret');
     expect(config.maxUploadSize).toBe(111);
+    expect(config.maxJsonSize).toBe(333);
     expect(config.maxReferenceSize).toBe(222);
   });
 

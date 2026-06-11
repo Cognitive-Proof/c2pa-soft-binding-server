@@ -38,7 +38,7 @@ Run these from the repository root — they apply to the root package and, where
 | `npm run format` / `npm run format:check` | Format (or check formatting) with Prettier                    |
 | `npm run dev`                             | Run the server locally with `ts-node` + `nodemon`             |
 
-A pull request should pass `npm run typecheck`, `npm test`, `npm run lint`, and `npm run format:check` before review.
+A pull request should pass `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run build`, and `npm test` before review. The CI workflow enforces the same checks.
 
 ## Adding or changing a plugin
 

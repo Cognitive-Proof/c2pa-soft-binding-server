@@ -3,9 +3,17 @@ import type { RequestHandler } from 'express';
 import request from 'supertest';
 import { createQueryRouter } from '../../routes/query';
 import { createSoftBindingRegistry } from '../../softBinding';
+import { validateReferenceUrl } from '../../utils/ssrf';
 import { createFakeDataStore } from '../helpers/fakeDataStore';
 
+jest.mock('../../utils/ssrf', () => ({
+  validateReferenceUrl: jest.fn(),
+}));
+
 const allowAll: RequestHandler = (_req, _res, next) => next();
+const mockedValidateReferenceUrl = validateReferenceUrl as jest.MockedFunction<
+  typeof validateReferenceUrl
+>;
 
 function buildApp(overrides: Partial<Parameters<typeof createQueryRouter>[0]> = {}) {
   const dataStore = overrides.dataStore ?? createFakeDataStore();
@@ -161,6 +169,24 @@ describe('POST /v1/matches/byContent', () => {
 });
 
 describe('POST /v1/matches/byReference', () => {
+  beforeEach(() => {
+    mockedValidateReferenceUrl.mockReset();
+    mockedValidateReferenceUrl.mockImplementation(async (url) => {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:') {
+        throw new Error('Only HTTPS reference URLs are permitted');
+      }
+      if (parsed.hostname === '127.0.0.1') {
+        throw new Error('Reference URL resolves to a private or reserved IP address');
+      }
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
   it('returns 400 when referenceUrl or assetLength is missing', async () => {
     const { app } = buildApp();
 
@@ -191,5 +217,147 @@ describe('POST /v1/matches/byReference', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/exceeds the server limit/);
+  });
+
+  it('stops reading a chunked response when it exceeds maxReferenceSize', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(6));
+        controller.enqueue(new Uint8Array(6));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg' },
+      }),
+    );
+    const { app } = buildApp({ maxReferenceSize: 10 });
+
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({ referenceUrl: 'https://example.com/a.jpg', assetLength: 10 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/exceeds the server limit of 10 bytes/);
+    expect(cancelled).toBe(true);
+  });
+
+  it('keeps the timeout active while reading the response body', async () => {
+    jest.useFakeTimers();
+    let markFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
+    jest.spyOn(globalThis, 'fetch').mockImplementationOnce(async (_url, init) => {
+      markFetchStarted();
+      const signal = init?.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          signal?.addEventListener(
+            'abort',
+            () => controller.error(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+    });
+    const { app } = buildApp();
+
+    const responsePromise = Promise.resolve(
+      request(app)
+        .post('/v1/matches/byReference')
+        .send({ referenceUrl: 'https://example.com/a.jpg', assetLength: 100 }),
+    );
+    await fetchStarted;
+    await jest.advanceTimersByTimeAsync(30_000);
+    const res = await responsePromise;
+
+    expect(res.status).toBe(504);
+    expect(res.body.error).toBe('Reference download timed out');
+  });
+
+  it('validates and follows a public redirect', async () => {
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { Location: '/final.jpg' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(Buffer.from('image-bytes'), {
+          status: 200,
+          headers: { 'Content-Type': 'image/jpeg' },
+        }),
+      );
+    const { app } = buildApp();
+
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({ referenceUrl: 'https://example.com/start', assetLength: 11 });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ matches: [] });
+    expect(mockedValidateReferenceUrl).toHaveBeenNthCalledWith(1, 'https://example.com/start');
+    expect(mockedValidateReferenceUrl).toHaveBeenNthCalledWith(2, 'https://example.com/final.jpg');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://example.com/start',
+      expect.objectContaining({ redirect: 'manual' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://example.com/final.jpg',
+      expect.objectContaining({ redirect: 'manual' }),
+    );
+  });
+
+  it('rejects a redirect to a private address before fetching it', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: 'https://127.0.0.1/internal' },
+      }),
+    );
+    const { app } = buildApp();
+
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({ referenceUrl: 'https://example.com/start', assetLength: 100 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/private or reserved IP address/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockedValidateReferenceUrl).toHaveBeenNthCalledWith(2, 'https://127.0.0.1/internal');
+  });
+
+  it('rejects a reference that exceeds the redirect limit', async () => {
+    let redirectNumber = 0;
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      redirectNumber += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `/redirect-${redirectNumber}` },
+      });
+    });
+    const { app } = buildApp();
+
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({ referenceUrl: 'https://example.com/start', assetLength: 100 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/exceeded 5 redirects/);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 });
