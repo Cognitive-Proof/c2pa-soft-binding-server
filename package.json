@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run build -w @cognitiveproof/softbinding-api-plugin-mongodb -w @cognitiveproof/softbinding-api-plugin-gcp-bucket -w @cognitiveproof/softbinding-api-plugin-aws-bucket -w @cognitiveproof/softbinding-api-plugin-sqlite -w @cognitiveproof/softbinding-api-plugin-postgres -w @cognitiveproof/softbinding-api-plugin-mysql -w @cognitiveproof/softbinding-api-plugin-google-auth -w @cognitiveproof/softbinding-api-plugin-pino-logger -w @cognitiveproof/softbinding-api-plugin-redis-rate-limit -w @cognitiveproof/softbinding-api-plugin-vsmark && tsc",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit && tsc -p tsconfig.jest.json",
+    "typecheck": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run typecheck --workspaces --if-present && tsc --noEmit && tsc -p tsconfig.jest.json",
     "start": "node dist/cli.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
     "test": "jest && npm run test --workspaces --if-present",
