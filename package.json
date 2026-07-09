@@ -26,6 +26,7 @@
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
     "upload:manifest": "ts-node scripts/uploadFile.ts",
     "check:auth": "ts-node scripts/checkAuthToken.ts",
+    "publish:root": "ts-node scripts/publishRootIfChanged.ts",
     "test": "jest && npm run test --workspaces --if-present",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -33,7 +34,7 @@
     "format:check": "prettier --check .",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "npm run build && changeset publish && npm run publish:root"
   },
   "dependencies": {
     "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
