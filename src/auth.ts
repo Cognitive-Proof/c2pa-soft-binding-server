@@ -3,8 +3,15 @@ import type { RequestHandler } from 'express';
 import type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 
 export const AUTH_SCOPES_LOCALS_KEY = 'c2paAuthScopes';
+export const AUTH_CONTEXT_LOCALS_KEY = 'c2paAuthContext';
 
 export type AuthScope = 'fetch:manifests' | 'store:manifests' | 'store:bindings';
+
+/** Scopes and raw claims of a successfully verified bearer token. */
+export interface AuthContext {
+  scopes: string[];
+  claims: Record<string, unknown>;
+}
 
 export interface JwtAuthOptions {
   /** Expected `iss` claim. */
@@ -82,6 +89,34 @@ export function createJwtAuthMiddleware(options: JwtAuthOptions): RequestHandler
   };
 }
 
+/**
+ * Express middleware that verifies a `Authorization: Bearer <token>` header
+ * the same way `createJwtAuthMiddleware` does, but never rejects the
+ * request: if the token is missing, malformed, expired, or otherwise
+ * invalid, it just leaves `res.locals[AUTH_CONTEXT_LOCALS_KEY]` unset and
+ * calls `next()`. Used to give route-level authorization decisions (e.g. a
+ * per-resource public/private check) access to the caller's scopes/claims
+ * when available, without forcing every request to be authenticated.
+ */
+export function createOptionalJwtAuthMiddleware(options: JwtAuthOptions): RequestHandler {
+  const JWKS = createRemoteJWKSet(new URL(options.jwksUri));
+  const { issuer, audience } = options;
+
+  return async (req, res, next) => {
+    const header = req.headers.authorization;
+    if (header?.startsWith('Bearer ')) {
+      try {
+        const { payload } = await jwtVerify(header.slice(7), JWKS, { issuer, audience });
+        res.locals[AUTH_CONTEXT_LOCALS_KEY] = { scopes: extractScopes(payload), claims: payload };
+      } catch {
+        // No valid token — treated the same as an anonymous request.
+      }
+    }
+
+    next();
+  };
+}
+
 // Loads the auth plugin used as the default when `auth` is not provided:
 // either an npm package name to require() (e.g. the bundled
 // @cognitiveproof/softbinding-api-plugin-google-auth), falling back to
@@ -132,4 +167,51 @@ export function resolveAuthMiddleware(
   }
 
   return loadAuthPlugin()(projectId ?? '');
+}
+
+// A no-op middleware for cases where optional (non-failing) auth can't be
+// derived: it leaves AUTH_CONTEXT_LOCALS_KEY unset, i.e. always anonymous.
+const anonymousMiddleware: RequestHandler = (_req, _res, next) => next();
+
+// Loads the same default auth plugin package as loadAuthPlugin(), but its
+// optional named export (if the plugin provides one) instead of the
+// required default export. Bundled plugins (e.g. google-auth) provide this;
+// third-party AuthPlugin packages are not required to.
+function loadOptionalAuthPlugin(): AuthPlugin<string> | undefined {
+  const packageName =
+    process.env.AUTH_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-google-auth';
+
+  try {
+    return (require(packageName) as { createOptionalAuthMiddleware?: AuthPlugin<string> })
+      .createOptionalAuthMiddleware;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolves a non-failing companion to resolveAuthMiddleware(): it exposes an
+ * AuthContext (scopes + claims) on res.locals[AUTH_CONTEXT_LOCALS_KEY] when
+ * the caller presents a valid bearer token, but never rejects the request
+ * when one is missing or invalid. Intended for per-resource authorization
+ * decisions (e.g. `isManifestAuthRequired`) that need to know who's asking
+ * without making auth mandatory for every request.
+ *
+ * - `auth` as a custom middleware function can't be safely re-invoked in a
+ *   non-failing mode, so no context is ever populated in that case.
+ * - `auth` as `JwtAuthOptions` builds an optional JWT-verification
+ *   middleware for that issuer/audience/JWKS.
+ * - Otherwise uses the default auth plugin's optional export, if it
+ *   provides one; falls back to always-anonymous if not.
+ */
+export function resolveOptionalAuthMiddleware(
+  auth: RequestHandler | JwtAuthOptions | undefined,
+  gcpProjectId: string | undefined,
+): RequestHandler {
+  if (typeof auth === 'function') return anonymousMiddleware;
+  if (auth) return createOptionalJwtAuthMiddleware(auth);
+
+  const projectId = gcpProjectId ?? process.env.GCP_PROJECT_ID;
+  const plugin = loadOptionalAuthPlugin();
+  return plugin ? plugin(projectId ?? '') : anonymousMiddleware;
 }

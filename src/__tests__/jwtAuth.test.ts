@@ -3,7 +3,11 @@ import type { AddressInfo } from 'net';
 import express from 'express';
 import request from 'supertest';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
-import { createJwtAuthMiddleware, requireAuthScope } from '../auth';
+import {
+  createJwtAuthMiddleware,
+  createOptionalJwtAuthMiddleware,
+  requireAuthScope,
+} from '../auth';
 
 const ISSUER = 'https://issuer.example.com/';
 const AUDIENCE = 'my-audience';
@@ -33,10 +37,18 @@ describe('createJwtAuthMiddleware', () => {
     jwksUri = `http://127.0.0.1:${port}/jwks.json`;
 
     const middleware = createJwtAuthMiddleware({ issuer: ISSUER, audience: AUDIENCE, jwksUri });
+    const optionalMiddleware = createOptionalJwtAuthMiddleware({
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      jwksUri,
+    });
     app = express();
     app.get('/protected', middleware, (_req, res) => res.json({ ok: true }));
     app.get('/fetch', middleware, requireAuthScope('fetch:manifests'), (_req, res) =>
       res.json({ ok: true }),
+    );
+    app.get('/optional', optionalMiddleware, (_req, res) =>
+      res.json({ context: res.locals.c2paAuthContext ?? null }),
     );
   });
 
@@ -152,5 +164,30 @@ describe('createJwtAuthMiddleware', () => {
 
     expect(res.status).toBe(401);
     expect(res.body).toEqual({ error: 'Invalid token' });
+  });
+
+  describe('createOptionalJwtAuthMiddleware', () => {
+    it('succeeds with no context when there is no Authorization header', async () => {
+      const res = await request(app).get('/optional');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ context: null });
+    });
+
+    it('succeeds with no context for an invalid token, rather than rejecting', async () => {
+      const res = await request(app).get('/optional').set('Authorization', 'Bearer not-a-jwt');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ context: null });
+    });
+
+    it('populates the auth context for a valid token', async () => {
+      const token = await signToken({ scope: 'fetch:manifests' });
+
+      const res = await request(app).get('/optional').set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.context.scopes).toEqual(['fetch:manifests']);
+    });
   });
 });

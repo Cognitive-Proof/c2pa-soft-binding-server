@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "C2PA Soft Binding Resolution API v2.4 server implementation",
   "license": "MIT",
   "main": "dist/index.js",
@@ -20,6 +20,8 @@
     "typecheck": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run typecheck --workspaces --if-present && tsc --noEmit && tsc -p tsconfig.jest.json",
     "start": "node dist/cli.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
+    "upload:manifest": "ts-node scripts/uploadFile.ts",
+    "check:auth": "ts-node scripts/checkAuthToken.ts",
     "test": "jest && npm run test --workspaces --if-present",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

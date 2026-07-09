@@ -1,7 +1,8 @@
 import express from 'express';
 import type { RequestHandler } from 'express';
 import request from 'supertest';
-import { createFetchRouter } from '../../routes/fetch';
+import { AUTH_CONTEXT_LOCALS_KEY, AuthContext } from '../../auth';
+import { createFetchRouter, FetchRouterDeps } from '../../routes/fetch';
 import { buildReceipt as signReceipt } from '../../receipts';
 import { createFakeDataStore } from '../helpers/fakeDataStore';
 
@@ -9,11 +10,20 @@ const allowAll: RequestHandler = (_req, _res, next) => next();
 const RECEIPT_SECRET = 'test-secret';
 const REPO_URI = 'https://repo.example.com';
 
-function buildApp() {
+function buildApp(overrides: Partial<FetchRouterDeps> = {}) {
   const dataStore = createFakeDataStore();
   const app = express();
   app.use(express.json());
-  app.use('/v1', createFetchRouter({ dataStore, auth: allowAll, receiptSecret: RECEIPT_SECRET }));
+  app.use(
+    '/v1',
+    createFetchRouter({
+      dataStore,
+      auth: allowAll,
+      optionalAuth: allowAll,
+      receiptSecret: RECEIPT_SECRET,
+      ...overrides,
+    }),
+  );
   return { app, dataStore };
 }
 
@@ -49,6 +59,109 @@ describe('GET /v1/manifests/:manifestId', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/application\/c2pa/);
     expect(res.body).toEqual(Buffer.from('manifest-bytes'));
+  });
+
+  describe('with isManifestAuthRequired', () => {
+    const authenticated: RequestHandler = (_req, res, next) => {
+      res.locals[AUTH_CONTEXT_LOCALS_KEY] = {
+        scopes: ['fetch:manifests'],
+        claims: {},
+      } satisfies AuthContext;
+      next();
+    };
+
+    it('serves a manifest with no token when the predicate returns false', async () => {
+      const { app, dataStore } = buildApp({
+        optionalAuth: allowAll,
+        isManifestAuthRequired: () => false,
+      });
+      const manifestId = await dataStore.addManifest(Buffer.from('public'), 'application/c2pa');
+
+      const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}`);
+
+      expect(res.status).toBe(200);
+    });
+
+    it('returns 404 (not 401/403) for a private manifest with no token', async () => {
+      const { app, dataStore } = buildApp({
+        optionalAuth: allowAll,
+        isManifestAuthRequired: () => true,
+      });
+      const manifestId = await dataStore.addManifest(Buffer.from('private'), 'application/c2pa');
+
+      const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('serves a private manifest when the caller has fetch:manifests scope', async () => {
+      const { app, dataStore } = buildApp({
+        optionalAuth: authenticated,
+        isManifestAuthRequired: () => true,
+      });
+      const manifestId = await dataStore.addManifest(Buffer.from('private'), 'application/c2pa');
+
+      const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}`);
+
+      expect(res.status).toBe(200);
+    });
+
+    it('passes the manifestId and AuthContext to the predicate', async () => {
+      const isManifestAuthRequired = jest.fn().mockReturnValue(false);
+      const { app, dataStore } = buildApp({ optionalAuth: authenticated, isManifestAuthRequired });
+      const manifestId = await dataStore.addManifest(Buffer.from('public'), 'application/c2pa');
+
+      await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}`);
+
+      expect(isManifestAuthRequired).toHaveBeenCalledWith(manifestId, {
+        scopes: ['fetch:manifests'],
+        claims: {},
+      });
+    });
+  });
+
+  describe('with manifestHtmlRedirect', () => {
+    it('redirects a browser request (Accept: text/html) with 303 before auth or lookup runs', async () => {
+      const manifestHtmlRedirect = jest.fn(
+        (manifestId: string) => `https://viewer.example.com/${manifestId}`,
+      );
+      const { app } = buildApp({
+        auth: (_req, res) => res.status(401).json({ error: 'nope' }),
+        manifestHtmlRedirect,
+      });
+
+      const res = await request(app)
+        .get('/v1/manifests/urn:c2pa:nonexistent')
+        .set('Accept', 'text/html,application/xhtml+xml');
+
+      expect(res.status).toBe(303);
+      expect(res.headers.location).toBe('https://viewer.example.com/urn:c2pa:nonexistent');
+      expect(manifestHtmlRedirect).toHaveBeenCalledWith('urn:c2pa:nonexistent');
+    });
+
+    it('does not redirect a request without text/html in Accept', async () => {
+      const { app, dataStore } = buildApp({
+        manifestHtmlRedirect: (manifestId) => `https://viewer.example.com/${manifestId}`,
+      });
+      const manifestId = await dataStore.addManifest(Buffer.from('bytes'), 'application/c2pa');
+
+      const res = await request(app)
+        .get(`/v1/manifests/${encodeURIComponent(manifestId)}`)
+        .set('Accept', 'application/c2pa');
+
+      expect(res.status).toBe(200);
+    });
+
+    it('does not redirect when manifestHtmlRedirect is not configured', async () => {
+      const { app, dataStore } = buildApp();
+      const manifestId = await dataStore.addManifest(Buffer.from('bytes'), 'application/c2pa');
+
+      const res = await request(app)
+        .get(`/v1/manifests/${encodeURIComponent(manifestId)}`)
+        .set('Accept', 'text/html');
+
+      expect(res.status).toBe(200);
+    });
   });
 });
 

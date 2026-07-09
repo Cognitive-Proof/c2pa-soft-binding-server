@@ -8,7 +8,7 @@ import type {
   Logger,
 } from '@cognitiveproof/softbinding-api-plugin-types';
 import type { Extractor } from './softBinding';
-import type { JwtAuthOptions } from './auth';
+import type { AuthContext, JwtAuthOptions } from './auth';
 
 export interface SoftBindingServerOptions {
   /** Public base URI of this server, embedded in receipts. Default: REPO_URI env var, then http://localhost:3000 */
@@ -34,6 +34,40 @@ export interface SoftBindingServerOptions {
    * falls back to Google Identity Platform using `gcpProjectId`.
    */
   auth?: RequestHandler | JwtAuthOptions;
+  /**
+   * Per-manifest authorization check for `GET /manifests/:manifestId`,
+   * letting you mark specific manifests public. Called with the requested
+   * manifestId and, if the caller presented a valid bearer token, their
+   * scopes/claims (`undefined` for an anonymous or invalid-token request).
+   * Return `true` to require the usual `fetch:manifests` scope, `false` to
+   * allow anyone to fetch that manifest. If omitted, all manifests require
+   * auth (unchanged default behavior). A request that fails this check gets
+   * the same 404 as a manifest that doesn't exist, so private manifests
+   * don't reveal their existence to unauthorized callers.
+   *
+   * Only populated with an `AuthContext` when `auth` is `JwtAuthOptions` or
+   * omitted (default Google Identity Platform auth) — custom `auth`
+   * middleware functions can't be safely re-invoked in a non-failing mode,
+   * so this is always called with `undefined` in that case.
+   */
+  isManifestAuthRequired?: (
+    manifestId: string,
+    auth: AuthContext | undefined,
+  ) => boolean | Promise<boolean>;
+  /**
+   * Redirects browser requests for `GET /manifests/:manifestId` to an
+   * HTML page instead of returning the raw `application/c2pa` bytes.
+   * Called with the requested manifestId to build the target URL; the
+   * response is a `303 See Other` to whatever it returns. Only applies
+   * when the request's `Accept` header includes `text/html` (i.e. a
+   * browser navigation, not an API client). Checked before auth or the
+   * manifest lookup — it fires purely off the manifestId and Accept
+   * header, regardless of whether the manifest exists or the caller is
+   * authorized to see it. If omitted, browser requests are treated the
+   * same as any other client and receive the raw manifest bytes (or the
+   * usual 401/403/404).
+   */
+  manifestHtmlRedirect?: (manifestId: string) => string;
   /** Soft binding watermark/fingerprint extractors, keyed by algorithm name. */
   extractors?: Record<string, Extractor>;
   /** Mount /docs and /v1/openapi.json. Default: true. */

@@ -33,3 +33,5 @@ Thumbs.db
 .claude/
 aiContext/
 data/
+scripts/enviroment.json
+scripts/manifest.c2pa
