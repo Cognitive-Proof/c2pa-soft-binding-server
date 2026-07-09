@@ -27,9 +27,10 @@ jobs:
           cache: 'npm'
 
       # OIDC trusted publishing requires npm >= 11.5.1; the version bundled
-      # with actions/setup-node's Node 20 is older.
+      # with actions/setup-node's Node 20 is older. Pinned to the npm 11
+      # line since npm 12 dropped Node 20 support.
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - run: npm ci
 
