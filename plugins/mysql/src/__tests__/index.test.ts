@@ -1,12 +1,10 @@
 import type { Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
 
-const poolQueryMock = jest.fn(
-  (..._args: unknown[]): Promise<[unknown, unknown]> =>
-    Promise.resolve([[] as unknown[], undefined]),
+const poolQueryMock = jest.fn((..._args: unknown[]): Promise<[unknown, unknown]> =>
+  Promise.resolve([[] as unknown[], undefined]),
 );
-const connQueryMock = jest.fn(
-  (..._args: unknown[]): Promise<[unknown, unknown]> =>
-    Promise.resolve([[] as unknown[], undefined]),
+const connQueryMock = jest.fn((..._args: unknown[]): Promise<[unknown, unknown]> =>
+  Promise.resolve([[] as unknown[], undefined]),
 );
 const releaseMock = jest.fn();
 const beginTransactionMock = jest.fn(() => Promise.resolve());
