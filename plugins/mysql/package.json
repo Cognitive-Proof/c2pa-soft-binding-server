@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-plugin-mysql",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MySQL data store plugin for the C2PA Soft Binding Resolution API server",
   "license": "MIT",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
   "dependencies": {
     "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
     "mysql2": "^3.11.0",
-    "uuid": "^9.0.0"
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
