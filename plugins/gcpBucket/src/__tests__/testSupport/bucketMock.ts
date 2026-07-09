@@ -8,14 +8,13 @@ function createFileMock() {
       }),
       end: jest.fn(() => finishHandler?.()),
     })),
-    getMetadata: jest.fn(
-      (): Promise<[{ contentType?: string; timeCreated?: string }]> =>
-        Promise.resolve([{ contentType: 'application/octet-stream' }]),
+    getMetadata: jest.fn((): Promise<[{ contentType?: string; timeCreated?: string }]> =>
+      Promise.resolve([{ contentType: 'application/octet-stream' }]),
     ),
     download: jest.fn((): Promise<[Buffer]> => Promise.resolve([Buffer.from('data')])),
     exists: jest.fn((): Promise<[boolean]> => Promise.resolve([true])),
-    getSignedUrl: jest.fn(
-      (): Promise<[string]> => Promise.resolve(['https://signed.example.com/object']),
+    getSignedUrl: jest.fn((): Promise<[string]> =>
+      Promise.resolve(['https://signed.example.com/object']),
     ),
     delete: jest.fn((): Promise<unknown> => Promise.resolve(undefined)),
   };

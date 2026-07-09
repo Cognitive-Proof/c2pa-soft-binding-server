@@ -84,8 +84,7 @@ const sqliteDataStore: DataStorePlugin = {
 
   async getReceipt(manifestId) {
     const row = db.prepare('SELECT receipt FROM manifests WHERE id = ?').get(manifestId) as
-      | { receipt: string | null }
-      | undefined;
+      { receipt: string | null } | undefined;
     if (!row?.receipt) return null;
     return JSON.parse(row.receipt) as Receipt;
   },
