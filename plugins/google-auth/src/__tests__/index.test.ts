@@ -13,7 +13,7 @@ jest.mock('jose', () => ({
   errors: { JWTExpired, JWTInvalid },
 }));
 
-import createGoogleAuthMiddleware from '../index';
+import createGoogleAuthMiddleware, { createOptionalAuthMiddleware } from '../index';
 
 function createMockRes() {
   const res: Partial<Response> = { locals: {} };
@@ -122,5 +122,57 @@ describe('createGoogleAuthMiddleware', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ error: 'Invalid token' });
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe('createOptionalAuthMiddleware', () => {
+  beforeEach(() => {
+    createRemoteJWKSetMock.mockClear();
+    jwtVerifyMock.mockReset();
+  });
+
+  it('calls next() with no context when there is no Authorization header', async () => {
+    const middleware = createOptionalAuthMiddleware('my-project');
+    const req = { headers: {} } as Request;
+    const res = createMockRes();
+    const next = jest.fn();
+
+    await middleware(req, res, next as NextFunction);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.locals.c2paAuthContext).toBeUndefined();
+  });
+
+  it('calls next() with no context for an invalid token, rather than rejecting', async () => {
+    jwtVerifyMock.mockRejectedValue(new JWTInvalid('bad signature'));
+    const middleware = createOptionalAuthMiddleware('my-project');
+    const req = { headers: { authorization: 'Bearer bad-token' } } as Request;
+    const res = createMockRes();
+    const next = jest.fn();
+
+    await middleware(req, res, next as NextFunction);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.locals.c2paAuthContext).toBeUndefined();
+  });
+
+  it('populates the auth context on res.locals for a valid token', async () => {
+    jwtVerifyMock.mockResolvedValue({
+      payload: { scope: 'fetch:manifests', sub: 'user-123' },
+    });
+    const middleware = createOptionalAuthMiddleware('my-project');
+    const req = { headers: { authorization: 'Bearer valid-token' } } as Request;
+    const res = createMockRes();
+    const next = jest.fn();
+
+    await middleware(req, res, next as NextFunction);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.locals.c2paAuthContext).toEqual({
+      scopes: ['fetch:manifests'],
+      claims: { scope: 'fetch:manifests', sub: 'user-123' },
+    });
   });
 });

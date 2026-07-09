@@ -8,7 +8,7 @@ import YAML from 'yaml';
 import { resolveConfig, type SoftBindingServerOptions } from './config';
 import { loadDataStore } from './store';
 import { createSoftBindingRegistry } from './softBinding';
-import { resolveAuthMiddleware } from './auth';
+import { resolveAuthMiddleware, resolveOptionalAuthMiddleware } from './auth';
 import { resolveLogger, createRequestLogger } from './logger';
 import { resolveRateLimitStore } from './rateLimit';
 import { createQueryRouter } from './routes/query';
@@ -27,14 +27,20 @@ export type {
 } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { Extractor, SupportedAlgorithms, SoftBindingRegistry } from './softBinding';
 export type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
-export type { AuthScope, JwtAuthOptions } from './auth';
+export type { AuthContext, AuthScope, JwtAuthOptions } from './auth';
 export type { Logger, LoggerPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { HelmetOptions } from 'helmet';
 export type { Options as RateLimitOptions, Store as RateLimitStore } from 'express-rate-limit';
 export type { RateLimitStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export { loadDataStore } from './store';
 export { loadObjectStore } from './objectStore';
-export { AUTH_SCOPES_LOCALS_KEY, createJwtAuthMiddleware, requireAuthScope } from './auth';
+export {
+  AUTH_SCOPES_LOCALS_KEY,
+  AUTH_CONTEXT_LOCALS_KEY,
+  createJwtAuthMiddleware,
+  createOptionalJwtAuthMiddleware,
+  requireAuthScope,
+} from './auth';
 export { createConsoleLogger } from './logger';
 
 interface BodyParserError extends Error {
@@ -55,6 +61,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   const dataStore = loadDataStore(options.dataStore);
   const softBinding = createSoftBindingRegistry(options.extractors);
   const auth = resolveAuthMiddleware(options.auth, options.gcpProjectId);
+  const optionalAuth = resolveOptionalAuthMiddleware(options.auth, options.gcpProjectId);
   const logger = resolveLogger(options.logger);
   const rateLimitStore = resolveRateLimitStore(options.rateLimitStore);
 
@@ -105,7 +112,17 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       receiptSecret: config.receiptSecret,
     }),
   );
-  app.use('/v1', createFetchRouter({ dataStore, auth, receiptSecret: config.receiptSecret }));
+  app.use(
+    '/v1',
+    createFetchRouter({
+      dataStore,
+      auth,
+      optionalAuth,
+      receiptSecret: config.receiptSecret,
+      isManifestAuthRequired: options.isManifestAuthRequired,
+      manifestHtmlRedirect: options.manifestHtmlRedirect,
+    }),
+  );
   app.use('/v1', createServiceRouter({ softBinding }));
 
   app.use((_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));

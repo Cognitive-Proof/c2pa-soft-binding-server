@@ -4,6 +4,7 @@ import type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 const GOOGLE_JWKS_URI =
   'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 const AUTH_SCOPES_LOCALS_KEY = 'c2paAuthScopes';
+const AUTH_CONTEXT_LOCALS_KEY = 'c2paAuthContext';
 
 function extractScopes(payload: Record<string, unknown>): string[] {
   const scopes = new Set<string>();
@@ -52,6 +53,34 @@ const createGoogleAuthMiddleware: AuthPlugin<string> = (gcpProjectId) => {
         res.status(401).json({ error: 'Invalid token' });
       }
     }
+  };
+};
+
+/**
+ * Non-failing companion to createGoogleAuthMiddleware: verifies the bearer
+ * token the same way, but if it's missing/invalid/expired it just leaves
+ * `res.locals[AUTH_CONTEXT_LOCALS_KEY]` unset and calls `next()` rather than
+ * rejecting the request. Lets per-resource authorization checks (e.g. a
+ * public/private manifest predicate) see the caller's scopes when a valid
+ * token is present, without making auth mandatory for the route.
+ */
+export const createOptionalAuthMiddleware: AuthPlugin<string> = (gcpProjectId) => {
+  const JWKS = createRemoteJWKSet(new URL(GOOGLE_JWKS_URI));
+  const issuer = `https://securetoken.google.com/${gcpProjectId}`;
+  const audience = gcpProjectId;
+
+  return async (req, res, next) => {
+    const header = req.headers.authorization;
+    if (header?.startsWith('Bearer ')) {
+      try {
+        const { payload } = await jwtVerify(header.slice(7), JWKS, { issuer, audience });
+        res.locals[AUTH_CONTEXT_LOCALS_KEY] = { scopes: extractScopes(payload), claims: payload };
+      } catch {
+        // No valid token — treated the same as an anonymous request.
+      }
+    }
+
+    next();
   };
 };
 

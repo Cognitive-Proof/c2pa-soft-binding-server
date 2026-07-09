@@ -1,6 +1,6 @@
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
-import { requireAuthScope, resolveAuthMiddleware } from '../auth';
+import { requireAuthScope, resolveAuthMiddleware, resolveOptionalAuthMiddleware } from '../auth';
 
 describe('requireAuthScope', () => {
   it('allows a request with the required scope', async () => {
@@ -106,5 +106,71 @@ describe('resolveAuthMiddleware', () => {
     expect(() => resolveAuthMiddleware(undefined, 'my-gcp-project')).toThrow(
       'Auth plugin "@cognitiveproof/does-not-exist" is not installed. Run `npm install @cognitiveproof/does-not-exist`.',
     );
+  });
+});
+
+describe('resolveOptionalAuthMiddleware', () => {
+  const ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...ENV };
+  });
+
+  afterAll(() => {
+    process.env = ENV;
+  });
+
+  it('never invokes a custom auth function, always leaving auth context unset', async () => {
+    const custom = jest.fn<void, Parameters<RequestHandler>>((_req, res, next) => {
+      res.locals.c2paAuthContext = { scopes: ['fetch:manifests'], claims: {} };
+      next();
+    });
+
+    const middleware = resolveOptionalAuthMiddleware(custom, undefined);
+    const app = express();
+    app.get('/', middleware, (_req, res) =>
+      res.json({ context: res.locals.c2paAuthContext ?? null }),
+    );
+
+    const res = await request(app).get('/');
+
+    expect(res.body).toEqual({ context: null });
+    expect(custom).not.toHaveBeenCalled();
+  });
+
+  it('builds an optional JWT middleware from JwtAuthOptions', () => {
+    const middleware = resolveOptionalAuthMiddleware(
+      {
+        issuer: 'https://issuer.example.com/',
+        audience: 'my-audience',
+        jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
+      },
+      'some-gcp-project',
+    );
+
+    expect(typeof middleware).toBe('function');
+  });
+
+  it("falls back to the default plugin package's optional export", () => {
+    delete process.env.SKIP_ENV_VALIDATION;
+
+    const middleware = resolveOptionalAuthMiddleware(undefined, 'my-gcp-project');
+
+    expect(typeof middleware).toBe('function');
+  });
+
+  it('falls back to an always-anonymous middleware when AUTH_PLUGIN has no optional export', async () => {
+    process.env.AUTH_PLUGIN = '@cognitiveproof/does-not-exist';
+
+    const middleware = resolveOptionalAuthMiddleware(undefined, 'my-gcp-project');
+    const app = express();
+    app.get('/', middleware, (_req, res) =>
+      res.json({ context: res.locals.c2paAuthContext ?? null }),
+    );
+
+    const res = await request(app).get('/').set('Authorization', 'Bearer anything');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ context: null });
   });
 });
