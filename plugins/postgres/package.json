@@ -16,7 +16,7 @@
   "dependencies": {
     "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
     "pg": "^8.11.3",
-    "uuid": "^14.0.1"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

@@ -16,7 +16,7 @@
   "dependencies": {
     "@cognitiveproof/softbinding-api-plugin-types": "^1.0.0",
     "better-sqlite3": "^11.3.0",
-    "uuid": "^14.0.1"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
