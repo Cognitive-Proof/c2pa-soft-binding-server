@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Shared TypeScript interfaces for C2PA Soft Binding Resolution API server storage plugins",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cognitive-Proof/c2pa-soft-binding-server.git",
+    "directory": "plugins/types"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
