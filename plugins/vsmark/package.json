@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Variation-selector text watermarking soft binding extractor for the C2PA Soft Binding Resolution API server",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cognitive-Proof/c2pa-soft-binding-server.git",
+    "directory": "plugins/vsmark"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
