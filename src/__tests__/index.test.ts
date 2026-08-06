@@ -217,6 +217,24 @@ describe('createServer', () => {
     );
   });
 
+  it('serves the well-known discovery document without auth, outside /v1', async () => {
+    const app = createServer({
+      dataStore: createFakeDataStore(),
+      auth: (_req, res) => res.status(401).json({ error: 'nope' }),
+      docs: false,
+    });
+
+    const res = await request(app).get('/.well-known/c2pa-soft-binding-resolution');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      apiEndpoint: '/v1',
+      c2paSpecificationVersion: '2.4.0',
+      capabilitiesEndpoint: '/v1/services/capabilities',
+      statusEndpoint: '/v1/services/status',
+    });
+  });
+
   it('does not require auth for /v1/services/supportedAlgorithms', async () => {
     const app = createServer({
       dataStore: createFakeDataStore(),

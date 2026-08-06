@@ -14,7 +14,7 @@ import { resolveRateLimitStore } from './rateLimit';
 import { createQueryRouter } from './routes/query';
 import { createStoreRouter } from './routes/store';
 import { createFetchRouter } from './routes/fetch';
-import { createServiceRouter } from './routes/service';
+import { createServiceRouter, C2PA_SPECIFICATION_VERSION } from './routes/service';
 
 export type { SoftBindingServerOptions } from './config';
 export type {
@@ -86,12 +86,27 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
     app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDocument));
   }
 
+  const WELL_KNOWN_PATH = '/.well-known/c2pa-soft-binding-resolution';
+
   if (config.rateLimit !== false) {
-    app.use(
-      '/v1',
-      rateLimit({ ...config.rateLimit, ...(rateLimitStore ? { store: rateLimitStore } : {}) }),
-    );
+    const limiter = rateLimit({
+      ...config.rateLimit,
+      ...(rateLimitStore ? { store: rateLimitStore } : {}),
+    });
+    app.use('/v1', limiter);
+    app.use(WELL_KNOWN_PATH, limiter);
   }
+
+  // Discovery endpoint per RFC 8615 — served at the domain root, not under
+  // /v1, so clients can find the API without knowing the version prefix.
+  app.get(WELL_KNOWN_PATH, (_req, res) => {
+    res.json({
+      apiEndpoint: '/v1',
+      c2paSpecificationVersion: C2PA_SPECIFICATION_VERSION,
+      capabilitiesEndpoint: '/v1/services/capabilities',
+      statusEndpoint: '/v1/services/status',
+    });
+  });
 
   app.use(
     '/v1',
@@ -101,6 +116,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       auth,
       maxUploadSize: config.maxUploadSize,
       maxReferenceSize: config.maxReferenceSize,
+      maxQueryValueLength: config.maxQueryValueLength,
     }),
   );
   app.use(
@@ -123,7 +139,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       manifestHtmlRedirect: options.manifestHtmlRedirect,
     }),
   );
-  app.use('/v1', createServiceRouter({ softBinding }));
+  app.use('/v1', createServiceRouter({ softBinding, getServiceStatus: options.getServiceStatus }));
 
   app.use((_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 

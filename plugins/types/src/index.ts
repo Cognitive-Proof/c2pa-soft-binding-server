@@ -11,7 +11,11 @@ export interface Receipt {
   '@context': { c2pa: string; receipt: string };
   '@type': string;
   repository: { uri: string; manifestId: string };
-  anchor: { uri: string; proof: { alg: string; value: string } };
+  anchor: {
+    uri: string;
+    proof: { alg: string; value: string };
+    parameters?: Record<string, unknown>;
+  };
   verified?: boolean;
   error?: string;
 }
@@ -101,10 +105,72 @@ export type LoggerPlugin<TConfig = unknown> = (config: TConfig) => Logger;
 export type RateLimitStorePlugin<TConfig = unknown> = (config: TConfig) => RateLimitStore;
 
 /**
+ * A region of interest within an asset, as per the C2PA Regions of Interest
+ * specification. Discriminated by `type`; mirrors the five variants defined
+ * by the C2PA Soft Binding Resolution API spec (SpatialRange, TemporalRange,
+ * FrameRange, TextualRange, IdentifiedRange).
+ */
+export type RegionOfInterest =
+  SpatialRegion | TemporalRegion | FrameRegion | TextualRegion | IdentifiedRegion;
+
+export interface SpatialRegion {
+  type: 'spatial';
+  shape: {
+    kind: 'rectangle' | 'circle' | 'polygon';
+    unit: 'pixel' | 'percent';
+    origin: { x: number; y: number };
+  };
+}
+
+export interface TemporalRegion {
+  type: 'temporal';
+  time: {
+    type: 'ntp' | 'wall-clock';
+    start: string;
+    end: string;
+  };
+}
+
+export interface FrameRegion {
+  type: 'frame';
+  frame: {
+    start: number;
+    end: number;
+  };
+}
+
+export interface TextualRegion {
+  type: 'textual';
+  text: {
+    selector: {
+      fragment: string;
+      start?: number;
+      end?: number;
+    };
+  };
+}
+
+export interface IdentifiedRegion {
+  type: 'identified';
+  identified: {
+    identifier: string;
+    value: string;
+  };
+}
+
+/**
  * An Extractor recovers a soft binding value (a watermark or content
  * fingerprint) from an asset, returning the binding value or `null` if none
  * is found. Registered with `createServer({ extractors })`, keyed by an
  * algorithm name from the C2PA soft binding algorithm list:
  * https://github.com/c2pa-org/softbinding-algorithm-list
+ *
+ * `region`, when supplied by the caller (e.g. via POST /matches/byReference),
+ * restricts the search to a specific region of interest within the asset.
+ * Extractors are not required to honor it.
  */
-export type Extractor = (buffer: Buffer, mimeType: string) => Promise<string | null>;
+export type Extractor = (
+  buffer: Buffer,
+  mimeType: string,
+  region?: RegionOfInterest[],
+) => Promise<string | null>;

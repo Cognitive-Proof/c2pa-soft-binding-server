@@ -21,6 +21,13 @@ export interface SoftBindingServerOptions {
   maxJsonSize?: number;
   /** Max size (bytes) of an asset downloaded via byReference. Default: MAX_REFERENCE_SIZE env var, else 100MB. */
   maxReferenceSize?: number;
+  /**
+   * Max length (characters) of the `value` query parameter on
+   * `GET /matches/byBinding`. Requests exceeding it get a `414` response
+   * suggesting the caller use `POST /matches/byBinding` instead, per the
+   * spec. Default: MAX_QUERY_VALUE_LENGTH env var, else 2048.
+   */
+  maxQueryValueLength?: number;
   /** A DataStorePlugin instance, or the name of an npm package implementing one. Default: DATASTORE_PLUGIN env var, else the bundled MongoDB plugin. */
   dataStore?: DataStorePlugin | string;
   /** An ObjectStorePlugin instance, or the name of an npm package implementing one. Default: OBJECTSTORE_PLUGIN env var, else the bundled GCS plugin. */
@@ -98,6 +105,16 @@ export interface SoftBindingServerOptions {
    * env var, else express-rate-limit's default in-memory store.
    */
   rateLimitStore?: RateLimitStore | string;
+  /**
+   * Reports operational status for `GET /services/status`. Called on every
+   * request to that endpoint; wrap real health checks (e.g. a DB ping) in
+   * this function. If it throws or rejects, the response falls back to
+   * `{ status: 'down' }` rather than a 500 (the endpoint itself did not
+   * fail — it's honestly reporting the failure it observed). If omitted,
+   * the endpoint always reports `{ status: 'ok' }`.
+   */
+  getServiceStatus?: () =>
+    { status: 'ok' | 'degraded' | 'down' } | Promise<{ status: 'ok' | 'degraded' | 'down' }>;
 }
 
 export interface ResolvedConfig {
@@ -106,6 +123,7 @@ export interface ResolvedConfig {
   maxUploadSize: number;
   maxJsonSize: number;
   maxReferenceSize: number;
+  maxQueryValueLength: number;
   docs: boolean;
   helmet: HelmetOptions | false;
   rateLimit: Partial<RateLimitOptions> | false;
@@ -120,6 +138,8 @@ export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedC
     maxJsonSize: options.maxJsonSize ?? parseInt(process.env.MAX_JSON_SIZE ?? '10485760', 10),
     maxReferenceSize:
       options.maxReferenceSize ?? parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10),
+    maxQueryValueLength:
+      options.maxQueryValueLength ?? parseInt(process.env.MAX_QUERY_VALUE_LENGTH ?? '2048', 10),
     docs: options.docs ?? true,
     helmet: options.helmet ?? {},
     rateLimit:

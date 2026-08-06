@@ -27,6 +27,9 @@ app.listen(port, () => {
   console.log('');
   console.log('Service routes:');
   console.log('  GET  /v1/services/supportedAlgorithms');
+  console.log('  GET  /v1/services/capabilities');
+  console.log('  GET  /v1/services/status');
+  console.log('  GET  /.well-known/c2pa-soft-binding-resolution');
   console.log('');
   console.log('Docs:');
   console.log('  GET  /docs');
