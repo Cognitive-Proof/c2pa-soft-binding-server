@@ -17,7 +17,8 @@
     "openapi.yaml"
   ],
   "workspaces": [
-    "plugins/*"
+    "plugins/*",
+    "conformance"
   ],
   "scripts": {
     "build": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run build -w @cognitiveproof/softbinding-api-plugin-mongodb -w @cognitiveproof/softbinding-api-plugin-gcp-bucket -w @cognitiveproof/softbinding-api-plugin-aws-bucket -w @cognitiveproof/softbinding-api-plugin-sqlite -w @cognitiveproof/softbinding-api-plugin-postgres -w @cognitiveproof/softbinding-api-plugin-mysql -w @cognitiveproof/softbinding-api-plugin-google-auth -w @cognitiveproof/softbinding-api-plugin-pino-logger -w @cognitiveproof/softbinding-api-plugin-redis-rate-limit -w @cognitiveproof/softbinding-api-plugin-vsmark && tsc",

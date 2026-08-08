@@ -1,0 +1,39 @@
+{
+  "name": "@cognitiveproof/softbinding-api-conformance",
+  "version": "1.0.0",
+  "description": "Black-box conformance test harness for third-party C2PA Soft Binding Resolution API implementations",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cognitive-Proof/c2pa-soft-binding-server.git",
+    "directory": "conformance"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "softbinding-api-conformance": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "tests",
+    "jest.conformance.config.js",
+    "jest.conformance.setup.ts",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "conformance": "jest --config jest.conformance.config.js"
+  },
+  "dependencies": {
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/supertest": "^7.2.0"
+  }
+}
