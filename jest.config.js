@@ -4,6 +4,10 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.ts'],
+  // Real-library integration tests (e.g. against c2pa-rs-javascript-library)
+  // run separately via `npm run test:integration` (jest.integration.config.js)
+  // — kept out of the default fast/offline run.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/src/__tests__/integration/'],
   setupFiles: ['<rootDir>/jest.setup.ts'],
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.jest.json' }],
