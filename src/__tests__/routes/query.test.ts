@@ -29,6 +29,7 @@ function buildApp(overrides: Partial<Parameters<typeof createQueryRouter>[0]> = 
       auth: allowAll,
       maxUploadSize: 1024 * 1024,
       maxReferenceSize: 1024 * 1024,
+      maxQueryValueLength: 2048,
       ...overrides,
     }),
   );
@@ -70,6 +71,23 @@ describe('GET /v1/matches/byBinding', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ matches: [] });
+  });
+
+  it('returns 414 when value exceeds maxQueryValueLength', async () => {
+    const { app } = buildApp({ maxQueryValueLength: 10 });
+
+    const res = await request(app).get(`/v1/matches/byBinding?value=${'x'.repeat(11)}&alg=test`);
+
+    expect(res.status).toBe(414);
+    expect(res.body.error).toMatch(/POST \/matches\/byBinding/);
+  });
+
+  it('does not 414 a value at exactly maxQueryValueLength', async () => {
+    const { app } = buildApp({ maxQueryValueLength: 10 });
+
+    const res = await request(app).get(`/v1/matches/byBinding?value=${'x'.repeat(10)}&alg=test`);
+
+    expect(res.status).toBe(200);
   });
 });
 
@@ -339,6 +357,52 @@ describe('POST /v1/matches/byReference', () => {
     expect(res.body.error).toMatch(/private or reserved IP address/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(mockedValidateReferenceUrl).toHaveBeenNthCalledWith(2, 'https://127.0.0.1/internal');
+  });
+
+  it('returns 400 for a malformed region', async () => {
+    const { app } = buildApp();
+
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({
+        referenceUrl: 'https://example.com/a.jpg',
+        assetLength: 100,
+        region: [{ type: 'spatial', shape: { kind: 'rectangle' } }],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/region/);
+  });
+
+  it('returns 400 when region is not an array', async () => {
+    const { app } = buildApp();
+
+    const res = await request(app)
+      .post('/v1/matches/byReference')
+      .send({ referenceUrl: 'https://example.com/a.jpg', assetLength: 100, region: 'nope' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/region must be an array/);
+  });
+
+  it('forwards a valid region to the extractor', async () => {
+    const extractor = jest.fn().mockResolvedValue(null);
+    const softBinding = createSoftBindingRegistry({ 'com.example.watermark.v1': extractor });
+    const { app } = buildApp({ softBinding });
+    const region = [{ type: 'frame', frame: { start: 0, end: 5 } }];
+    jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(Buffer.from('image-bytes'), {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg' },
+      }),
+    );
+
+    const res = await request(app)
+      .post('/v1/matches/byReference?alg=com.example.watermark.v1')
+      .send({ referenceUrl: 'https://example.com/a.jpg', assetLength: 11, region });
+
+    expect(res.status).toBe(200);
+    expect(extractor).toHaveBeenCalledWith(expect.any(Buffer), 'image/jpeg', region);
   });
 
   it('rejects a reference that exceeds the redirect limit', async () => {

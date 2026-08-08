@@ -3,6 +3,7 @@ import type { DataStorePlugin } from '@cognitiveproof/softbinding-api-plugin-typ
 import type { SoftBindingRegistry } from '../softBinding';
 import { requireAuthScope } from '../auth';
 import { validateReferenceUrl } from '../utils/ssrf';
+import { parseRegionOfInterest } from '../utils/regionOfInterest';
 
 const ASSET_MIME_RE = /^(image|audio|video|application|model|text)\//;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -79,10 +80,12 @@ export interface QueryRouterDeps {
   auth: RequestHandler;
   maxUploadSize: number;
   maxReferenceSize: number;
+  maxQueryValueLength: number;
 }
 
 export function createQueryRouter(deps: QueryRouterDeps): Router {
-  const { dataStore, softBinding, auth, maxUploadSize, maxReferenceSize } = deps;
+  const { dataStore, softBinding, auth, maxUploadSize, maxReferenceSize, maxQueryValueLength } =
+    deps;
   const router = express.Router();
   const requireFetchScope = requireAuthScope('fetch:manifests');
 
@@ -97,6 +100,11 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
     const { value, alg } = req.query as Record<string, string | undefined>;
     const maxResults = parseInt((req.query.maxResults as string) ?? '10', 10);
 
+    if (value && value.length > maxQueryValueLength) {
+      return res.status(414).json({
+        error: `value exceeds the server limit of ${maxQueryValueLength} characters; use POST /matches/byBinding instead`,
+      });
+    }
     if (!value || !alg) {
       return res.status(400).json({ error: 'Missing required query parameters: value, alg' });
     }
@@ -184,7 +192,7 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
     auth,
     requireFetchScope,
     async (req: Request, res: Response) => {
-      const { referenceUrl, assetLength, assetType } = (req.body ?? {}) as {
+      const { referenceUrl, assetLength, assetType, region } = (req.body ?? {}) as {
         referenceUrl?: string;
         assetLength?: number;
         assetType?: string;
@@ -205,6 +213,13 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
         return res
           .status(400)
           .json({ error: `assetLength exceeds the server limit of ${maxReferenceSize} bytes` });
+      }
+
+      let regionOfInterest;
+      try {
+        regionOfInterest = parseRegionOfInterest(region);
+      } catch (err) {
+        return res.status(400).json({ error: (err as Error).message });
       }
 
       const controller = new AbortController();
@@ -244,7 +259,12 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
 
           let bindingValue: string | null = null;
           if (alg) {
-            bindingValue = await softBinding.extractSoftBinding(buffer, effectiveType, alg);
+            bindingValue = await softBinding.extractSoftBinding(
+              buffer,
+              effectiveType,
+              alg,
+              regionOfInterest,
+            );
           }
           if (!bindingValue && hintAlg && hintValue) {
             bindingValue = hintValue;

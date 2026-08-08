@@ -7,13 +7,14 @@ info:
     Allows clients to store C2PA Manifest Stores, associate them with soft
     binding values (watermarks or fingerprints), and recover those manifests
     from a previously detected binding.
-  version: '2.4'
+  version: '2.4.0'
 servers:
   - url: /v1
 
 security:
-  - oauth2:
+  - auth:
       - fetch:manifests
+  - {}
 
 tags:
   - name: Query
@@ -31,6 +32,9 @@ paths:
       tags: [Query]
       summary: Find manifests by a soft binding value (query string)
       operationId: getMatchesByBinding
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/value'
         - $ref: '#/components/parameters/alg'
@@ -44,6 +48,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '414':
+          description: value exceeds the server's maximum query length; use POST instead
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/ServiceFailure'
     post:
@@ -51,6 +61,9 @@ paths:
       summary: Find manifests by a soft binding value (request body)
       description: Used when the binding value is too large to fit in a query string.
       operationId: postMatchesByBinding
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/maxResults'
       requestBody:
@@ -86,6 +99,9 @@ paths:
       tags: [Query]
       summary: Extract a soft binding from an uploaded asset and find matches
       operationId: getMatchesByContent
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/algOptional'
         - $ref: '#/components/parameters/hintAlg'
@@ -143,6 +159,9 @@ paths:
       tags: [Query]
       summary: Download an asset by reference URL, extract a soft binding, and find matches
       operationId: getMatchesByReference
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/algOptional'
         - $ref: '#/components/parameters/hintAlg'
@@ -167,7 +186,12 @@ paths:
                   type: string
                   description: Expected MIME type of the asset
                 region:
-                  description: Optional region of interest within the asset
+                  type: array
+                  description: >
+                    Optional region(s) of interest within the asset. If specified, the
+                    service shall only match soft bindings within the specified region(s).
+                  items:
+                    $ref: '#/components/schemas/RegionOfInterest'
       responses:
         '200':
           $ref: '#/components/responses/Matches'
@@ -194,7 +218,7 @@ paths:
       summary: Ingest a C2PA Manifest Store
       operationId: postManifest
       security:
-        - oauth2:
+        - auth:
             - store:manifests
       parameters:
         - name: returnReceipt
@@ -240,7 +264,7 @@ paths:
       summary: Associate a soft binding value with a stored manifest
       operationId: createBinding
       security:
-        - oauth2:
+        - auth:
             - store:bindings
       requestBody:
         $ref: '#/components/requestBodies/Binding'
@@ -268,7 +292,7 @@ paths:
       summary: Replace the manifest a soft binding value points to
       operationId: updateBinding
       security:
-        - oauth2:
+        - auth:
             - store:bindings
       requestBody:
         $ref: '#/components/requestBodies/Binding'
@@ -297,6 +321,9 @@ paths:
       tags: [Fetch]
       summary: Retrieve a stored C2PA Manifest Store
       operationId: getManifest
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/manifestId'
       responses:
@@ -324,7 +351,7 @@ paths:
       summary: Remove a manifest and its associated bindings
       operationId: deleteManifest
       security:
-        - oauth2:
+        - auth:
             - store:manifests
       parameters:
         - $ref: '#/components/parameters/manifestId'
@@ -349,6 +376,9 @@ paths:
       tags: [Fetch]
       summary: Retrieve the repository receipt for a manifest
       operationId: getManifestReceipt
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/manifestId'
       responses:
@@ -374,6 +404,9 @@ paths:
       tags: [Fetch]
       summary: Verify a caller-supplied receipt against a stored manifest
       operationId: verifyManifestReceipt
+      security:
+        - auth:
+            - fetch:manifests
       parameters:
         - $ref: '#/components/parameters/manifestId'
       requestBody:
@@ -431,9 +464,66 @@ paths:
         '500':
           $ref: '#/components/responses/ServiceFailure'
 
+  /services/capabilities:
+    get:
+      tags: [Service]
+      summary: Returns the capabilities of the service
+      description: >
+        Returns information about which endpoints are supported by this service instance.
+        The list of supported soft binding algorithms is available separately via
+        GET /services/supportedAlgorithms.
+      operationId: getServiceCapabilities
+      security: []
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCapabilities'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /services/status:
+    get:
+      tags: [Service]
+      summary: Returns the operational status of the service
+      operationId: getServiceStatus
+      security: []
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
+  /.well-known/c2pa-soft-binding-resolution:
+    servers:
+      - url: /
+    get:
+      tags: [Service]
+      summary: Returns discovery information for this soft binding resolution service
+      description: >
+        A well-known URI (RFC 8615) allowing clients to discover the API endpoint and
+        capabilities of this C2PA Soft Binding Resolution service.
+      operationId: getWellKnown
+      security: []
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellKnownDiscovery'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
 components:
   securitySchemes:
-    oauth2:
+    auth:
       type: oauth2
       description: OAuth2 client credentials. Configure the token URL for your identity provider.
       flows:
@@ -606,7 +696,179 @@ components:
                   type: string
                 value:
                   type: string
+            parameters:
+              type: object
+              additionalProperties: true
+              description: Optional repository-specific key/value parameters used when accessing the anchor URI
         verified:
           type: boolean
         error:
           type: string
+    RegionOfInterest:
+      oneOf:
+        - $ref: '#/components/schemas/SpatialRange'
+        - $ref: '#/components/schemas/TemporalRange'
+        - $ref: '#/components/schemas/FrameRange'
+        - $ref: '#/components/schemas/TextualRange'
+        - $ref: '#/components/schemas/IdentifiedRange'
+      discriminator:
+        propertyName: type
+        mapping:
+          spatial: '#/components/schemas/SpatialRange'
+          temporal: '#/components/schemas/TemporalRange'
+          frame: '#/components/schemas/FrameRange'
+          textual: '#/components/schemas/TextualRange'
+          identified: '#/components/schemas/IdentifiedRange'
+    SpatialRange:
+      type: object
+      required: [type, shape]
+      properties:
+        type:
+          type: string
+          enum: [spatial]
+        shape:
+          type: object
+          required: [kind, unit]
+          properties:
+            kind:
+              type: string
+              enum: [rectangle, circle, polygon]
+            unit:
+              type: string
+              enum: [pixel, percent]
+            origin:
+              type: object
+              required: [x, y]
+              properties:
+                x:
+                  type: number
+                y:
+                  type: number
+    TemporalRange:
+      type: object
+      required: [type, time]
+      properties:
+        type:
+          type: string
+          enum: [temporal]
+        time:
+          type: object
+          required: [start, end]
+          description: >
+            A time range described either using Normal Play Time as described in RFC 2326
+            or Wall Clock Time using the Internet profile of ISO 8601 as described in RFC 3339
+          properties:
+            type:
+              type: string
+              enum: [ntp, wall-clock]
+            start:
+              type: string
+              example: '12:05:30.5'
+            end:
+              type: string
+              example: '12:07:40.2'
+    FrameRange:
+      type: object
+      required: [type, frame]
+      properties:
+        type:
+          type: string
+          enum: [frame]
+        frame:
+          type: object
+          required: [start, end]
+          properties:
+            start:
+              type: integer
+              minimum: 0
+            end:
+              type: integer
+              minimum: 0
+    TextualRange:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [textual]
+        text:
+          type: object
+          required: [selector]
+          properties:
+            selector:
+              type: object
+              required: [fragment]
+              properties:
+                fragment:
+                  type: string
+                  description: Fragment identifier, as per RFC3023 or ISO 32000-2, Annex O
+                  example: 'page=1,rect=10,10,450,500'
+                start:
+                  type: integer
+                  minimum: 0
+                end:
+                  type: integer
+                  minimum: 0
+    IdentifiedRange:
+      type: object
+      required: [type, identified]
+      properties:
+        type:
+          type: string
+          enum: [identified]
+        identified:
+          type: object
+          required: [identifier, value]
+          properties:
+            identifier:
+              type: string
+            value:
+              type: string
+    ServiceStatus:
+      type: object
+      description: Operational status of the soft binding resolution service
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+          example: '2024-01-01T00:00:00Z'
+    ServiceCapabilities:
+      type: object
+      description: Capabilities of the soft binding resolution service
+      required: [c2paSpecificationVersion, supportedCapabilities]
+      properties:
+        c2paSpecificationVersion:
+          type: string
+          pattern: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$'
+          example: '2.4.0'
+        supportedCapabilities:
+          type: array
+          items:
+            type: string
+          example: [queryByContent, storeManifests, storeBindings]
+    WellKnownDiscovery:
+      type: object
+      description: Discovery information for a C2PA Soft Binding Resolution service
+      required: [apiEndpoint, c2paSpecificationVersion]
+      properties:
+        apiEndpoint:
+          type: string
+          format: uri
+          example: /v1
+        c2paSpecificationVersion:
+          type: string
+          pattern: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$'
+          example: '2.4.0'
+        capabilitiesEndpoint:
+          type: string
+          format: uri
+          example: /v1/services/capabilities
+        statusEndpoint:
+          type: string
+          format: uri
+          example: /v1/services/status

@@ -31,3 +31,70 @@ describe('GET /v1/services/supportedAlgorithms', () => {
     });
   });
 });
+
+describe('GET /v1/services/capabilities', () => {
+  it('returns the spec version and the static list of supported capabilities', async () => {
+    const app = express();
+    app.use('/v1', createServiceRouter({ softBinding: createSoftBindingRegistry() }));
+
+    const res = await request(app).get('/v1/services/capabilities');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      c2paSpecificationVersion: '2.4.0',
+      supportedCapabilities: [
+        'queryByContent',
+        'queryByReference',
+        'storeManifests',
+        'storeBindings',
+      ],
+    });
+  });
+});
+
+describe('GET /v1/services/status', () => {
+  it('defaults to ok with a timestamp when no getServiceStatus hook is configured', async () => {
+    const app = express();
+    app.use('/v1', createServiceRouter({ softBinding: createSoftBindingRegistry() }));
+
+    const res = await request(app).get('/v1/services/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(new Date(res.body.timestamp).toString()).not.toBe('Invalid Date');
+  });
+
+  it('reflects the configured getServiceStatus hook', async () => {
+    const app = express();
+    app.use(
+      '/v1',
+      createServiceRouter({
+        softBinding: createSoftBindingRegistry(),
+        getServiceStatus: async () => ({ status: 'degraded' }),
+      }),
+    );
+
+    const res = await request(app).get('/v1/services/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('degraded');
+  });
+
+  it('reports down when the getServiceStatus hook throws', async () => {
+    const app = express();
+    app.use(
+      '/v1',
+      createServiceRouter({
+        softBinding: createSoftBindingRegistry(),
+        getServiceStatus: () => {
+          throw new Error('db unreachable');
+        },
+      }),
+    );
+
+    const res = await request(app).get('/v1/services/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('down');
+  });
+});

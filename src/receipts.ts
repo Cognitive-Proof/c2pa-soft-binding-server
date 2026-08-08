@@ -7,7 +7,12 @@ function canonicalPayload(repositoryUri: string, manifestId: string, anchorUri: 
   return JSON.stringify({ alg: PROOF_ALG, repositoryUri, manifestId, anchorUri });
 }
 
-export function buildReceipt(manifestId: string, repoUri: string, secret: string): Receipt {
+export function buildReceipt(
+  manifestId: string,
+  repoUri: string,
+  secret: string,
+  parameters?: Record<string, unknown>,
+): Receipt {
   const anchorUri = `${repoUri}/v1/manifests/${encodeURIComponent(manifestId)}/receipts`;
   const proof = crypto
     .createHmac('sha256', secret)
@@ -30,6 +35,7 @@ export function buildReceipt(manifestId: string, repoUri: string, secret: string
         alg: PROOF_ALG,
         value: proof,
       },
+      ...(parameters ? { parameters } : {}),
     },
   };
 }

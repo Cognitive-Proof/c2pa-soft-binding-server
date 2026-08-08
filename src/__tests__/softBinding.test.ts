@@ -32,6 +32,23 @@ describe('createSoftBindingRegistry', () => {
     expect(watermarkExtractor).toHaveBeenCalledWith(buffer, 'image/png');
   });
 
+  it('forwards a region of interest to the extractor when supplied', async () => {
+    const extractor = jest.fn().mockResolvedValue('found');
+    const registry = createSoftBindingRegistry({ 'com.example.watermark.v1': extractor });
+    const buffer = Buffer.from('asset-bytes');
+    const region = [{ type: 'frame' as const, frame: { start: 0, end: 10 } }];
+
+    const result = await registry.extractSoftBinding(
+      buffer,
+      'video/mp4',
+      'com.example.watermark.v1',
+      region,
+    );
+
+    expect(result).toBe('found');
+    expect(extractor).toHaveBeenCalledWith(buffer, 'video/mp4', region);
+  });
+
   it('returns null when extracting with an unregistered algorithm', async () => {
     const registry = createSoftBindingRegistry();
 
