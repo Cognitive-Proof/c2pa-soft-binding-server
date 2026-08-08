@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-plugin-types",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Shared TypeScript interfaces for C2PA Soft Binding Resolution API server storage plugins",
   "license": "MIT",
   "repository": {
