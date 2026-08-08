@@ -574,7 +574,7 @@ createServer({
 - If the parser **throws or rejects**, `POST /manifests` returns `400`.
 - If it returns an id that's **already stored with identical bytes**, the request succeeds idempotently (`200`, the existing id, no duplicate row) — a repeat upload of the same manifest.
 - If it returns an id that's **already stored with different bytes**, the request is rejected with `400` as a label conflict, rather than silently overwritten — per the C2PA Technical Specification, the same label should never legitimately refer to different manifest content (the spec's own re-labeling mechanism exists precisely to avoid that).
-- If omitted, behavior is unchanged from today — the configured `DataStorePlugin` generates its own random id.
+- If omitted, behavior is unchanged from today — the configured `DataStorePlugin` generates its own random id — but `createServer()` logs a **one-time warning at startup** (via the configured `logger`) explaining that stored manifest ids won't match the spec. This is a heads-up, not an error: the server still runs normally.
 
 Implementing a custom `DataStorePlugin`? Its `addManifest(data, contentType, manifestId?)` should store the manifest under the supplied `manifestId` when present, falling back to generating its own only when it's omitted — see the bundled plugins (e.g. [`plugins/sqlite/src/index.ts`](plugins/sqlite/src/index.ts)) for the pattern.
 

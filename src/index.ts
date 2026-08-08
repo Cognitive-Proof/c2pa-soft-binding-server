@@ -65,6 +65,16 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   const logger = resolveLogger(options.logger);
   const rateLimitStore = resolveRateLimitStore(options.rateLimitStore);
 
+  if (!options.parseManifestId) {
+    logger.warn(
+      'parseManifestId is not configured — POST /manifests will assign each manifest a ' +
+        'randomly generated id instead of the id embedded in the manifest itself. This does ' +
+        "not match the C2PA spec, which requires manifestId to be the active manifest's own " +
+        'label. See the README section "Deriving manifestId from the Manifest Itself" to fix ' +
+        'this.',
+    );
+  }
+
   const app = express();
 
   if (config.helmet !== false) {
