@@ -14,9 +14,8 @@ interface BindingRow extends RowDataPacket {
 }
 
 const mysqlDataStore: DataStorePlugin = {
-  async addManifest(data, contentType) {
+  async addManifest(data, contentType, manifestId = `urn:c2pa:${uuidv4()}`) {
     await ready();
-    const manifestId = `urn:c2pa:${uuidv4()}`;
     await pool.query(
       'INSERT INTO manifests (id, data, content_type, receipt) VALUES (?, ?, ?, NULL)',
       [manifestId, data, contentType],

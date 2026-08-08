@@ -126,6 +126,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       auth,
       repoUri: config.repoUri,
       receiptSecret: config.receiptSecret,
+      parseManifestId: options.parseManifestId,
     }),
   );
   app.use(

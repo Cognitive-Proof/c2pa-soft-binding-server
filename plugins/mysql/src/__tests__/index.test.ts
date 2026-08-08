@@ -57,6 +57,24 @@ describe('mysqlDataStore', () => {
     ]);
   });
 
+  it('addManifest stores under an explicitly supplied manifestId', async () => {
+    poolQueryMock.mockResolvedValueOnce([{ affectedRows: 1 }, undefined]);
+
+    const data = Buffer.from('manifest-bytes');
+    const manifestId = await mysqlDataStore.addManifest(
+      data,
+      'application/c2pa',
+      'urn:c2pa:explicit-id',
+    );
+
+    expect(manifestId).toBe('urn:c2pa:explicit-id');
+    expect(poolQueryMock).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO manifests'), [
+      'urn:c2pa:explicit-id',
+      data,
+      'application/c2pa',
+    ]);
+  });
+
   it('getManifest returns the manifest entry when found', async () => {
     poolQueryMock.mockResolvedValueOnce([
       [{ data: Buffer.from('abc'), content_type: 'application/c2pa', receipt: null }],

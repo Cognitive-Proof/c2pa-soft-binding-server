@@ -6,8 +6,8 @@ import { createFakeDataStore } from '../helpers/fakeDataStore';
 
 const allowAll: RequestHandler = (_req, _res, next) => next();
 
-function buildApp() {
-  const dataStore = createFakeDataStore();
+function buildApp(overrides: Partial<Parameters<typeof createStoreRouter>[0]> = {}) {
+  const dataStore = overrides.dataStore ?? createFakeDataStore();
   const app = express();
   app.use(express.json());
   app.use(
@@ -17,6 +17,7 @@ function buildApp() {
       auth: allowAll,
       repoUri: 'https://repo.example.com',
       receiptSecret: 'test-secret',
+      ...overrides,
     }),
   );
   return { app, dataStore };
@@ -64,6 +65,86 @@ describe('POST /v1/manifests', () => {
       repository: { uri: 'https://repo.example.com', manifestId: res.body.manifestId },
     });
     expect(res.body.receipt.anchor.proof.alg).toBe('HMAC-SHA256');
+  });
+});
+
+describe('POST /v1/manifests with parseManifestId', () => {
+  it('returns 400 when the parser throws', async () => {
+    const { app } = buildApp({
+      parseManifestId: () => {
+        throw new Error('not a valid manifest store');
+      },
+    });
+
+    const res = await request(app)
+      .post('/v1/manifests')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('manifest-bytes'));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not a valid manifest store/);
+  });
+
+  it('stores a fresh manifest under the parsed id', async () => {
+    const { app, dataStore } = buildApp({ parseManifestId: () => 'urn:c2pa:parsed-id' });
+
+    const res = await request(app)
+      .post('/v1/manifests')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('manifest-bytes'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.manifestId).toBe('urn:c2pa:parsed-id');
+    expect((await dataStore.getManifest('urn:c2pa:parsed-id'))?.data).toEqual(
+      Buffer.from('manifest-bytes'),
+    );
+  });
+
+  it('is idempotent when the same id and identical bytes are uploaded again', async () => {
+    const { app, dataStore } = buildApp({ parseManifestId: () => 'urn:c2pa:parsed-id' });
+    const addManifest = jest.spyOn(dataStore, 'addManifest');
+
+    await request(app)
+      .post('/v1/manifests')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('manifest-bytes'));
+    const res = await request(app)
+      .post('/v1/manifests')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('manifest-bytes'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.manifestId).toBe('urn:c2pa:parsed-id');
+    expect(addManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a second upload under the same id with different bytes', async () => {
+    const { app } = buildApp({ parseManifestId: () => 'urn:c2pa:parsed-id' });
+
+    await request(app)
+      .post('/v1/manifests')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('manifest-bytes'));
+    const res = await request(app)
+      .post('/v1/manifests')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('different-bytes'));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already in use by a different manifest/);
+  });
+
+  it('still attaches a receipt when returnReceipt=true', async () => {
+    const { app } = buildApp({ parseManifestId: () => 'urn:c2pa:parsed-id' });
+
+    const res = await request(app)
+      .post('/v1/manifests?returnReceipt=true')
+      .set('Content-Type', 'application/c2pa')
+      .send(Buffer.from('manifest-bytes'));
+
+    expect(res.status).toBe(200);
+    expect(res.body.manifestId).toBe('urn:c2pa:parsed-id');
+    expect(res.body.receipt.repository.manifestId).toBe('urn:c2pa:parsed-id');
   });
 });
 

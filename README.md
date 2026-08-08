@@ -336,6 +336,7 @@ c2paApp.listen(3000);
 | `gcpProjectId`                                       | `string` — used by the default Google Identity Platform auth                                                              |
 | `auth`                                               | `RequestHandler \| { issuer, audience, jwksUri }` — overrides the default auth (see below)                                |
 | `extractors`                                         | `Record<string, Extractor>`                                                                                               |
+| `parseManifestId`                                    | `(data: Buffer) => string \| Promise<string>` — derives `manifestId` from the uploaded manifest itself (see below)        |
 | `docs`                                               | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json`                                                        |
 | `logger`                                             | `Logger \| string` — overrides the default console JSON logger (see below)                                                |
 | `helmet`                                             | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults)   |
@@ -542,6 +543,31 @@ const watermarked = encode(bindingValue, articleText);
 ```
 
 `vsmarkExtractor` decodes the asset buffer as UTF-8 and returns the hidden binding value, or `null` if the asset isn't text or contains no watermark. `decode(text)` is also exported directly for use outside of `createServer()`.
+
+---
+
+## Deriving `manifestId` from the Manifest Itself
+
+By default, `POST /manifests` assigns each stored manifest a random `urn:c2pa:<uuid>` id — this repo has no CBOR/JUMBF parsing capability of its own, so it can't read the active manifest's real embedded label out of the uploaded bytes. Per spec, `manifestId` is supposed to be that real label, not a server-invented one. Pass `parseManifestId` to `createServer()` to supply your own parser (e.g. backed by the official `c2pa-node` SDK, or any other C2PA-aware library):
+
+```ts
+createServer({
+  parseManifestId: async (data) => {
+    const manifest = await myC2paLib.readManifestStore(data);
+    if (!manifest.activeManifest) {
+      throw new Error('No active manifest found in this C2PA Manifest Store');
+    }
+    return manifest.activeManifest.label; // e.g. "urn:c2pa:F9168C5E-..."
+  },
+});
+```
+
+- If the parser **throws or rejects**, `POST /manifests` returns `400`.
+- If it returns an id that's **already stored with identical bytes**, the request succeeds idempotently (`200`, the existing id, no duplicate row) — a repeat upload of the same manifest.
+- If it returns an id that's **already stored with different bytes**, the request is rejected with `400` as a label conflict, rather than silently overwritten — per the C2PA Technical Specification, the same label should never legitimately refer to different manifest content (the spec's own re-labeling mechanism exists precisely to avoid that).
+- If omitted, behavior is unchanged from today — the configured `DataStorePlugin` generates its own random id.
+
+Implementing a custom `DataStorePlugin`? Its `addManifest(data, contentType, manifestId?)` should store the manifest under the supplied `manifestId` when present, falling back to generating its own only when it's omitted — see the bundled plugins (e.g. [`plugins/sqlite/src/index.ts`](plugins/sqlite/src/index.ts)) for the pattern.
 
 ---
 

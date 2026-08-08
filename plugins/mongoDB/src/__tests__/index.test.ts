@@ -50,6 +50,23 @@ describe('mongoDataStore', () => {
     });
   });
 
+  it('addManifest stores under an explicitly supplied manifestId', async () => {
+    const data = Buffer.from('manifest-bytes');
+    const manifestId = await mongoDataStore.addManifest(
+      data,
+      'application/c2pa',
+      'urn:c2pa:explicit-id',
+    );
+
+    expect(manifestId).toBe('urn:c2pa:explicit-id');
+    expect(collectionMock.insertOne).toHaveBeenCalledWith({
+      id: 'urn:c2pa:explicit-id',
+      data: data.toString('base64'),
+      contentType: 'application/c2pa',
+      receipt: null,
+    });
+  });
+
   it('getManifest returns the decoded manifest entry when found', async () => {
     const data = Buffer.from('abc');
     collectionMock.findOne.mockResolvedValueOnce({

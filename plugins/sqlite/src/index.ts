@@ -13,8 +13,7 @@ interface BindingRow {
 }
 
 const sqliteDataStore: DataStorePlugin = {
-  async addManifest(data, contentType) {
-    const manifestId = `urn:c2pa:${uuidv4()}`;
+  async addManifest(data, contentType, manifestId = `urn:c2pa:${uuidv4()}`) {
     db.prepare(
       'INSERT INTO manifests (id, data, content_type, receipt) VALUES (?, ?, ?, NULL)',
     ).run(manifestId, data, contentType);
