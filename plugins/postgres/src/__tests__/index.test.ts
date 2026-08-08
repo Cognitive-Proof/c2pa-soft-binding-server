@@ -45,6 +45,24 @@ describe('postgresDataStore', () => {
     ]);
   });
 
+  it('addManifest stores under an explicitly supplied manifestId', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const data = Buffer.from('manifest-bytes');
+    const manifestId = await postgresDataStore.addManifest(
+      data,
+      'application/c2pa',
+      'urn:c2pa:explicit-id',
+    );
+
+    expect(manifestId).toBe('urn:c2pa:explicit-id');
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO manifests'), [
+      'urn:c2pa:explicit-id',
+      data,
+      'application/c2pa',
+    ]);
+  });
+
   it('getManifest returns the manifest entry when found', async () => {
     queryMock.mockResolvedValueOnce({
       rows: [{ data: Buffer.from('abc'), content_type: 'application/c2pa', receipt: null }],

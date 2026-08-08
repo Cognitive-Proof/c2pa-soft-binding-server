@@ -217,6 +217,45 @@ describe('createServer', () => {
     );
   });
 
+  it('warns at startup when parseManifestId is not configured', () => {
+    const logger: Logger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      child: jest.fn(),
+    };
+
+    createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      logger,
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('parseManifestId'));
+  });
+
+  it('does not warn at startup when parseManifestId is configured', () => {
+    const logger: Logger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      child: jest.fn(),
+    };
+
+    createServer({
+      dataStore: createFakeDataStore(),
+      auth: allowAll,
+      docs: false,
+      logger,
+      parseManifestId: () => 'urn:c2pa:test',
+    });
+
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it('serves the well-known discovery document without auth, outside /v1', async () => {
     const app = createServer({
       dataStore: createFakeDataStore(),

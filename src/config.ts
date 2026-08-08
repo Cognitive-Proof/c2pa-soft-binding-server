@@ -75,6 +75,20 @@ export interface SoftBindingServerOptions {
    * usual 401/403/404).
    */
   manifestHtmlRedirect?: (manifestId: string) => string;
+  /**
+   * Extracts the real manifest identifier embedded in an uploaded C2PA
+   * Manifest Store, for `POST /manifests` to use instead of generating a
+   * random id. Takes the raw uploaded bytes and returns the active
+   * manifest's own id (or throws/rejects if the bytes aren't a valid
+   * Manifest Store — the request is rejected with 400). If the returned id
+   * already has a manifest stored under it, the request succeeds
+   * idempotently (200, no new row) when the bytes match exactly, or is
+   * rejected with 400 as a label conflict when they don't. If omitted, the
+   * configured data store plugin generates its own id as before. Ignored by
+   * any custom DataStorePlugin whose addManifest doesn't accept an explicit
+   * manifestId argument.
+   */
+  parseManifestId?: (data: Buffer) => string | Promise<string>;
   /** Soft binding watermark/fingerprint extractors, keyed by algorithm name. */
   extractors?: Record<string, Extractor>;
   /** Mount /docs and /v1/openapi.json. Default: true. */

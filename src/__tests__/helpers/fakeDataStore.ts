@@ -13,8 +13,11 @@ export function createFakeDataStore(): DataStorePlugin {
   const bindings = new Map<string, string>();
 
   return {
-    async addManifest(data: Buffer, contentType: string): Promise<string> {
-      const manifestId = `urn:c2pa:test-${++nextId}`;
+    async addManifest(
+      data: Buffer,
+      contentType: string,
+      manifestId: string = `urn:c2pa:test-${++nextId}`,
+    ): Promise<string> {
       manifests.set(manifestId, { data, contentType, receipt: null });
       return manifestId;
     },

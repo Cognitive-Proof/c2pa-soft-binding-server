@@ -25,8 +25,11 @@ const MANIFESTS = 'manifests';
 const BINDINGS = 'bindings';
 
 const mongoDataStore: DataStorePlugin = {
-  async addManifest(data: Buffer, contentType: string): Promise<string> {
-    const manifestId = `urn:c2pa:${uuidv4()}`;
+  async addManifest(
+    data: Buffer,
+    contentType: string,
+    manifestId: string = `urn:c2pa:${uuidv4()}`,
+  ): Promise<string> {
     await insertDoc<ManifestDoc>(MANIFESTS, {
       id: manifestId,
       data: data.toString('base64'),

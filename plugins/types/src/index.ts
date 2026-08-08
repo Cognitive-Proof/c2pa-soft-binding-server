@@ -36,7 +36,13 @@ export interface ManifestEntry {
  * and receipts. Implementations are free to use any backing database.
  */
 export interface DataStorePlugin {
-  addManifest(data: Buffer, contentType: string): Promise<string>;
+  /**
+   * Stores a C2PA Manifest Store and returns its manifest id. If
+   * `manifestId` is supplied (e.g. parsed from the manifest's own embedded
+   * label via `createServer({ parseManifestId })`), implementations should
+   * store the manifest under that exact id instead of generating one.
+   */
+  addManifest(data: Buffer, contentType: string, manifestId?: string): Promise<string>;
   getManifest(manifestId: string): Promise<ManifestEntry | null>;
   manifestExists(manifestId: string): Promise<boolean>;
   deleteManifest(manifestId: string): Promise<boolean>;

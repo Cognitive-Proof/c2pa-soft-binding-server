@@ -8,10 +8,11 @@ export interface StoreRouterDeps {
   auth: RequestHandler;
   repoUri: string;
   receiptSecret: string;
+  parseManifestId?: (data: Buffer) => string | Promise<string>;
 }
 
 export function createStoreRouter(deps: StoreRouterDeps): Router {
-  const { dataStore, auth, repoUri, receiptSecret } = deps;
+  const { dataStore, auth, repoUri, receiptSecret, parseManifestId } = deps;
   const router = express.Router();
   const requireManifestScope = requireAuthScope('store:manifests');
   const requireBindingScope = requireAuthScope('store:bindings');
@@ -34,8 +35,44 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
           .json({ error: 'Request body must be a non-empty application/c2pa blob' });
       }
 
+      const data = req.body as Buffer;
+      let parsedId: string | undefined;
+
+      if (parseManifestId) {
+        try {
+          parsedId = await parseManifestId(data);
+        } catch (err) {
+          return res.status(400).json({
+            error: `Failed to parse manifest id: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      }
+
       try {
-        const manifestId = await dataStore.addManifest(req.body as Buffer, 'application/c2pa');
+        let manifestId: string;
+
+        if (parsedId) {
+          // Existence + byte-comparison check happens here rather than
+          // atomically inside addManifest — see the plugin interface doc
+          // comment for why a same-id-different-bytes upload is treated as
+          // a label conflict (400) rather than silently overwritten. Two
+          // concurrent uploads racing to claim the same brand-new id is a
+          // theoretical (not practical) gap given manifest ids are UUIDs.
+          const existing = await dataStore.getManifest(parsedId);
+          if (existing) {
+            if (Buffer.compare(existing.data, data) !== 0) {
+              return res.status(400).json({
+                error: `manifestId ${parsedId} is already in use by a different manifest`,
+              });
+            }
+            manifestId = parsedId;
+          } else {
+            manifestId = await dataStore.addManifest(data, 'application/c2pa', parsedId);
+          }
+        } else {
+          manifestId = await dataStore.addManifest(data, 'application/c2pa');
+        }
+
         const result: { manifestId: string; receipt?: Receipt } = { manifestId };
 
         if (returnReceipt) {

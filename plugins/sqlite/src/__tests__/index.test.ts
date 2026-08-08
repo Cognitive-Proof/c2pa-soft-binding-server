@@ -13,6 +13,19 @@ describe('sqliteDataStore', () => {
     expect(entry).toEqual({ data, contentType: 'application/c2pa', receipt: null });
   });
 
+  it('stores a manifest under an explicitly supplied manifestId', async () => {
+    const data = Buffer.from('manifest-bytes');
+    const manifestId = await sqliteDataStore.addManifest(
+      data,
+      'application/c2pa',
+      'urn:c2pa:explicit-id',
+    );
+
+    expect(manifestId).toBe('urn:c2pa:explicit-id');
+    const entry = await sqliteDataStore.getManifest('urn:c2pa:explicit-id');
+    expect(entry).toEqual({ data, contentType: 'application/c2pa', receipt: null });
+  });
+
   it('returns null for an unknown manifest', async () => {
     expect(await sqliteDataStore.getManifest('urn:c2pa:does-not-exist')).toBeNull();
     expect(await sqliteDataStore.manifestExists('urn:c2pa:does-not-exist')).toBe(false);
