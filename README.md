@@ -69,11 +69,16 @@ The server implements all four route groups defined in the specification, mounte
 | `GET`  | `/v1/manifests/:manifestId/receipts` | Retrieve the repository receipt for a manifest             |
 | `POST` | `/v1/manifests/:manifestId/receipts` | Verify a caller-supplied receipt against a stored manifest |
 
-### Service — capability discovery
+### Service — capability and status discovery
 
-| Method | Route                              | Description                                                          |
-| ------ | ---------------------------------- | -------------------------------------------------------------------- |
-| `GET`  | `/v1/services/supportedAlgorithms` | List the watermark and fingerprint algorithms this instance supports |
+| Method | Route                                       | Description                                                          |
+| ------ | ------------------------------------------- | -------------------------------------------------------------------- |
+| `GET`  | `/v1/services/supportedAlgorithms`          | List the watermark and fingerprint algorithms this instance supports |
+| `GET`  | `/v1/services/capabilities`                 | List which optional endpoints this instance implements               |
+| `GET`  | `/v1/services/status`                       | Report current operational status (`ok` / `degraded` / `down`)       |
+| `GET`  | `/.well-known/c2pa-soft-binding-resolution` | Discovery document — served at the domain root, _not_ under `/v1`    |
+
+All four are public — no auth is required. See [Server status and capability reporting](#server-status-and-capability-reporting) below.
 
 ---
 
@@ -102,19 +107,20 @@ c2pa-soft-binding-server/
 │       ├── query.ts           # createQueryRouter() — GET|POST /matches/* routes
 │       ├── store.ts           # createStoreRouter() — POST|PUT /bindings, POST|DELETE /manifests routes
 │       ├── fetch.ts           # createFetchRouter() — GET /manifests/:id and receipt routes
-│       └── service.ts         # createServiceRouter() — GET /services/supportedAlgorithms
-└── plugins/                  # Storage and auth plugins — each is its own npm package
-    ├── types/                 # @cognitiveproof/softbinding-api-plugin-types — shared interfaces
-    ├── mongoDB/               # @cognitiveproof/softbinding-api-plugin-mongodb — DataStore plugin
-    ├── postgres/              # @cognitiveproof/softbinding-api-plugin-postgres — DataStore plugin
-    ├── mysql/                 # @cognitiveproof/softbinding-api-plugin-mysql — DataStore plugin
-    ├── sqlite/                # @cognitiveproof/softbinding-api-plugin-sqlite — DataStore plugin
-    ├── gcpBucket/             # @cognitiveproof/softbinding-api-plugin-gcp-bucket — ObjectStore plugin
-    ├── awsBucket/             # @cognitiveproof/softbinding-api-plugin-aws-bucket — ObjectStore plugin
-    ├── google-auth/           # @cognitiveproof/softbinding-api-plugin-google-auth — AuthPlugin (default)
-    ├── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
-    ├── redis-rate-limit/      # @cognitiveproof/softbinding-api-plugin-redis-rate-limit — RateLimitStorePlugin
-    └── vsmark/                # @cognitiveproof/softbinding-api-plugin-vsmark — Extractor (text watermark)
+│       └── service.ts         # createServiceRouter() — GET /services/supportedAlgorithms|capabilities|status
+├── plugins/                  # Storage and auth plugins — each is its own npm package
+│   ├── types/                 # @cognitiveproof/softbinding-api-plugin-types — shared interfaces
+│   ├── mongoDB/               # @cognitiveproof/softbinding-api-plugin-mongodb — DataStore plugin
+│   ├── postgres/              # @cognitiveproof/softbinding-api-plugin-postgres — DataStore plugin
+│   ├── mysql/                 # @cognitiveproof/softbinding-api-plugin-mysql — DataStore plugin
+│   ├── sqlite/                # @cognitiveproof/softbinding-api-plugin-sqlite — DataStore plugin
+│   ├── gcpBucket/             # @cognitiveproof/softbinding-api-plugin-gcp-bucket — ObjectStore plugin
+│   ├── awsBucket/             # @cognitiveproof/softbinding-api-plugin-aws-bucket — ObjectStore plugin
+│   ├── google-auth/           # @cognitiveproof/softbinding-api-plugin-google-auth — AuthPlugin (default)
+│   ├── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
+│   ├── redis-rate-limit/      # @cognitiveproof/softbinding-api-plugin-redis-rate-limit — RateLimitStorePlugin
+│   └── vsmark/                # @cognitiveproof/softbinding-api-plugin-vsmark — Extractor (text watermark)
+└── conformance/              # @cognitiveproof/softbinding-api-conformance — black-box spec-conformance test harness (see below)
 ```
 
 ### Layer responsibilities
@@ -184,6 +190,26 @@ createServer({
 ```
 
 When `POST /matches/byContent` or `POST /matches/byReference` is called with an `alg` query parameter, the corresponding extractor is invoked on the asset buffer. If no extractor is registered for that algorithm the route returns an empty match list. `getSupportedAlgorithms()` reflects whatever algorithms were registered and drives the `/services/supportedAlgorithms` response.
+
+#### Server status and capability reporting
+
+`createServiceRouter()` (`src/routes/service.ts`) also serves two other public, unauthenticated endpoints, and `createServer()` mounts a third directly on the app (outside `/v1`, per RFC 8615):
+
+- **`GET /v1/services/capabilities`** — returns `{ c2paSpecificationVersion, supportedCapabilities }`, where `supportedCapabilities` is a static list of the optional endpoints this build implements (`queryByContent`, `queryByReference`, `storeManifests`, `storeBindings`). Intended for clients — including the [conformance harness](#conformance-testing) — to discover what an instance supports without guessing.
+- **`GET /v1/services/status`** — returns `{ status: 'ok' | 'degraded' | 'down', timestamp }`. By default always reports `ok`; pass `getServiceStatus` to `createServer()` to wire in a real health check (e.g. pinging the data store):
+
+  ```ts
+  createServer({
+    getServiceStatus: async () => {
+      const healthy = await dataStore.ping();
+      return { status: healthy ? 'ok' : 'down' };
+    },
+  });
+  ```
+
+  If `getServiceStatus` throws or rejects, the endpoint reports `{ status: 'down' }` rather than a 500 — the endpoint itself didn't fail, it's honestly reporting the failure it observed.
+
+- **`GET /.well-known/c2pa-soft-binding-resolution`** — the spec's discovery document, returning `{ apiEndpoint, c2paSpecificationVersion, capabilitiesEndpoint, statusEndpoint }`. Served at the domain root (not `/v1`) so clients can find the API without already knowing the version prefix.
 
 #### `src/utils/ssrf.ts` — SSRF protection
 
@@ -315,6 +341,7 @@ c2paApp.listen(3000);
 | `helmet`                                             | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults)   |
 | `rateLimit`                                          | `Partial<RateLimitOptions> \| false` — customizes or disables rate limiting on `/v1` (default: 100 requests/15min per IP) |
 | `rateLimitStore`                                     | `Store \| string` — shared rate limit store (e.g. Redis) for multi-instance deployments                                   |
+| `getServiceStatus`                                   | `() => { status } \| Promise<{ status }>` — health check backing `GET /services/status` (default: always `ok`)            |
 
 By default, `/v1` routes require a Google Identity Platform JWT for `gcpProjectId` with the route's required scope in a `scope` or `scp` custom claim. To use a different identity provider or auth scheme, pass `auth`:
 
@@ -515,6 +542,22 @@ const watermarked = encode(bindingValue, articleText);
 ```
 
 `vsmarkExtractor` decodes the asset buffer as UTF-8 and returns the hidden binding value, or `null` if the asset isn't text or contains no watermark. `decode(text)` is also exported directly for use outside of `createServer()`.
+
+---
+
+## Conformance Testing
+
+[`@cognitiveproof/softbinding-api-conformance`](conformance/) is a **black-box** test harness for verifying that a server — this one, or a third party's independent implementation — actually behaves the way the spec requires. Unlike this repo's own Jest/Supertest suite (which imports the Express `app` directly and manipulates an in-memory fake data store), the conformance harness only ever speaks real HTTP to a `baseUrl`, exactly like an external client would. That's what makes it usable to check compatibility of _any_ implementation, not just this one.
+
+```bash
+npx @cognitiveproof/softbinding-api-conformance \
+  --base-url https://staging.example.com/v1 \
+  --token <bearer-token>
+```
+
+It calls `GET /v1/services/capabilities` first to discover which optional endpoints the target implements, and skips suites it can't exercise rather than failing them — only one query endpoint plus `GET /manifests/{id}` are actually mandatory per spec. What it checks today: the discovery endpoints, the manifest store → fetch → delete round trip, auth enforcement on store endpoints, bindings, and the receipts round trip. Optional query endpoints (`byContent`, `byReference`) and scope-granularity testing are not covered yet.
+
+**⚠ This creates and deletes real data on the target** — point it at a sandbox/staging deployment, not production. See [`conformance/README.md`](conformance/README.md) for the full flag reference, exactly what gets checked, and how to debug a failed run (`--no-cleanup` leaves fixtures in place, each tagged with a `softbinding-conformance-fixture:<uuid>` marker).
 
 ---
 
