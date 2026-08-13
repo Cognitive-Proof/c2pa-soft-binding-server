@@ -1,5 +1,14 @@
 # @cognitiveproof/softbinding-api-plugin-sqlite
 
+## 1.0.3
+
+### Patch Changes
+
+- [#15](https://github.com/Cognitive-Proof/c2pa-soft-binding-server/pull/15) [`ca45308`](https://github.com/Cognitive-Proof/c2pa-soft-binding-server/commit/ca45308505a007a357c24c1c8d8ee6b6ec434e0d) Thanks [@mrappard](https://github.com/mrappard)! - `DataStorePlugin.addManifest` accepts an optional explicit `manifestId`, used to store a manifest under a caller-supplied id instead of always generating a random one. All bundled storage plugins honor it when present and fall back to their previous random-id generation when it's omitted.
+
+- Updated dependencies [[`ca45308`](https://github.com/Cognitive-Proof/c2pa-soft-binding-server/commit/ca45308505a007a357c24c1c8d8ee6b6ec434e0d)]:
+  - @cognitiveproof/softbinding-api-plugin-types@1.2.0
+
 ## 1.0.2
 
 ### Patch Changes
