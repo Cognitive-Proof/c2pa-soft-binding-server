@@ -1,6 +1,18 @@
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
+import type { Logger } from '@cognitiveproof/softbinding-api-plugin-types';
 import { requireAuthScope, resolveAuthMiddleware, resolveOptionalAuthMiddleware } from '../auth';
+
+function createFakeLogger(): Logger {
+  const logger: Logger = {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    child: jest.fn(() => logger),
+  };
+  return logger;
+}
 
 describe('requireAuthScope', () => {
   it('allows a request with the required scope', async () => {
@@ -45,88 +57,49 @@ describe('requireAuthScope', () => {
 });
 
 describe('resolveAuthMiddleware', () => {
-  const ENV = process.env;
-
-  beforeEach(() => {
-    process.env = { ...ENV };
-  });
-
-  afterAll(() => {
-    process.env = ENV;
-  });
-
   it('returns a custom RequestHandler as-is', () => {
     const custom: RequestHandler = (_req, _res, next) => next();
 
-    expect(resolveAuthMiddleware(custom, undefined)).toBe(custom);
+    expect(resolveAuthMiddleware(custom, createFakeLogger())).toBe(custom);
   });
 
-  it('builds a JWT middleware from JwtAuthOptions, ignoring gcpProjectId', () => {
+  it('builds a JWT middleware from JwtAuthOptions', () => {
     const middleware = resolveAuthMiddleware(
       {
         issuer: 'https://issuer.example.com/',
         audience: 'my-audience',
         jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
       },
-      'some-gcp-project',
+      createFakeLogger(),
     );
 
     expect(typeof middleware).toBe('function');
   });
 
-  it('throws when neither auth nor gcpProjectId/GCP_PROJECT_ID is provided', () => {
-    delete process.env.SKIP_ENV_VALIDATION;
-    delete process.env.GCP_PROJECT_ID;
+  it('allows every request through and logs a warning when auth is omitted', async () => {
+    const logger = createFakeLogger();
+    const middleware = resolveAuthMiddleware(undefined, logger);
 
-    expect(() => resolveAuthMiddleware(undefined, undefined)).toThrow(
-      /Missing required configuration/,
+    const app = express();
+    app.get('/', middleware, requireAuthScope('store:manifests'), (_req, res) =>
+      res.sendStatus(204),
     );
-  });
 
-  it('falls back to the default auth plugin when SKIP_ENV_VALIDATION is set', () => {
-    process.env.SKIP_ENV_VALIDATION = '1';
-    delete process.env.GCP_PROJECT_ID;
+    const res = await request(app).get('/');
 
-    const middleware = resolveAuthMiddleware(undefined, undefined);
-
-    expect(typeof middleware).toBe('function');
-  });
-
-  it('falls back to the default auth plugin when gcpProjectId is provided', () => {
-    delete process.env.SKIP_ENV_VALIDATION;
-
-    const middleware = resolveAuthMiddleware(undefined, 'my-gcp-project');
-
-    expect(typeof middleware).toBe('function');
-  });
-
-  it('throws a helpful error when AUTH_PLUGIN points at a missing package', () => {
-    process.env.AUTH_PLUGIN = '@cognitiveproof/does-not-exist';
-
-    expect(() => resolveAuthMiddleware(undefined, 'my-gcp-project')).toThrow(
-      'Auth plugin "@cognitiveproof/does-not-exist" is not installed. Run `npm install @cognitiveproof/does-not-exist`.',
-    );
+    expect(res.status).toBe(204);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/`auth` is not configured/));
   });
 });
 
 describe('resolveOptionalAuthMiddleware', () => {
-  const ENV = process.env;
-
-  beforeEach(() => {
-    process.env = { ...ENV };
-  });
-
-  afterAll(() => {
-    process.env = ENV;
-  });
-
   it('never invokes a custom auth function, always leaving auth context unset', async () => {
     const custom = jest.fn<void, Parameters<RequestHandler>>((_req, res, next) => {
       res.locals.c2paAuthContext = { scopes: ['fetch:manifests'], claims: {} };
       next();
     });
 
-    const middleware = resolveOptionalAuthMiddleware(custom, undefined);
+    const middleware = resolveOptionalAuthMiddleware(custom);
     const app = express();
     app.get('/', middleware, (_req, res) =>
       res.json({ context: res.locals.c2paAuthContext ?? null }),
@@ -139,30 +112,17 @@ describe('resolveOptionalAuthMiddleware', () => {
   });
 
   it('builds an optional JWT middleware from JwtAuthOptions', () => {
-    const middleware = resolveOptionalAuthMiddleware(
-      {
-        issuer: 'https://issuer.example.com/',
-        audience: 'my-audience',
-        jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
-      },
-      'some-gcp-project',
-    );
+    const middleware = resolveOptionalAuthMiddleware({
+      issuer: 'https://issuer.example.com/',
+      audience: 'my-audience',
+      jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
+    });
 
     expect(typeof middleware).toBe('function');
   });
 
-  it("falls back to the default plugin package's optional export", () => {
-    delete process.env.SKIP_ENV_VALIDATION;
-
-    const middleware = resolveOptionalAuthMiddleware(undefined, 'my-gcp-project');
-
-    expect(typeof middleware).toBe('function');
-  });
-
-  it('falls back to an always-anonymous middleware when AUTH_PLUGIN has no optional export', async () => {
-    process.env.AUTH_PLUGIN = '@cognitiveproof/does-not-exist';
-
-    const middleware = resolveOptionalAuthMiddleware(undefined, 'my-gcp-project');
+  it('falls back to an always-anonymous middleware when auth is omitted', async () => {
+    const middleware = resolveOptionalAuthMiddleware(undefined);
     const app = express();
     app.get('/', middleware, (_req, res) =>
       res.json({ context: res.locals.c2paAuthContext ?? null }),

@@ -28,17 +28,21 @@ export interface SoftBindingServerOptions {
    * spec. Default: MAX_QUERY_VALUE_LENGTH env var, else 2048.
    */
   maxQueryValueLength?: number;
-  /** A DataStorePlugin instance, or the name of an npm package implementing one. Default: DATASTORE_PLUGIN env var, else the bundled MongoDB plugin. */
+  /** A DataStorePlugin instance, or the name of an npm package implementing one. Default: DATASTORE_PLUGIN env var, else the bundled SQLite plugin (writes to ./data/softbinding.sqlite). */
   dataStore?: DataStorePlugin | string;
   /** An ObjectStorePlugin instance, or the name of an npm package implementing one. Default: OBJECTSTORE_PLUGIN env var, else the bundled GCS plugin. */
   objectStore?: ObjectStorePlugin | string;
-  /** GCP project used to verify Identity Platform JWTs with the default auth. Default: GCP_PROJECT_ID env var. */
-  gcpProjectId?: string;
   /**
-   * Custom authentication for `/v1` routes. Either an Express middleware
-   * (bring your own auth scheme), or `{ issuer, audience, jwksUri }` to
-   * verify JWTs from any OIDC-compatible identity provider. If omitted,
-   * falls back to Google Identity Platform using `gcpProjectId`.
+   * Authentication for `/v1` routes. Either an Express middleware (bring
+   * your own auth scheme), or `{ issuer, audience, jwksUri }` to verify JWTs
+   * from any OIDC-compatible identity provider (e.g. Google Identity
+   * Platform, Auth0, Okta, Cognito). If omitted, `/v1` routes perform no
+   * authentication at all — every request is treated as fully authorized —
+   * and a warning is logged at startup so this doesn't go unnoticed. To use
+   * an `AuthPlugin` package (e.g.
+   * `@cognitiveproof/softbinding-api-plugin-google-auth`), install it and
+   * pass its built middleware here yourself, e.g.
+   * `auth: require('@cognitiveproof/softbinding-api-plugin-google-auth').default(gcpProjectId)`.
    */
   auth?: RequestHandler | JwtAuthOptions;
   /**
@@ -52,10 +56,10 @@ export interface SoftBindingServerOptions {
    * the same 404 as a manifest that doesn't exist, so private manifests
    * don't reveal their existence to unauthorized callers.
    *
-   * Only populated with an `AuthContext` when `auth` is `JwtAuthOptions` or
-   * omitted (default Google Identity Platform auth) — custom `auth`
-   * middleware functions can't be safely re-invoked in a non-failing mode,
-   * so this is always called with `undefined` in that case.
+   * Only populated with an `AuthContext` when `auth` is `JwtAuthOptions` —
+   * custom `auth` middleware functions can't be safely re-invoked in a
+   * non-failing mode, and there's no token to verify when `auth` is
+   * omitted, so this is always called with `undefined` in both cases.
    */
   isManifestAuthRequired?: (
     manifestId: string,

@@ -60,9 +60,9 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   const config = resolveConfig(options);
   const dataStore = loadDataStore(options.dataStore);
   const softBinding = createSoftBindingRegistry(options.extractors);
-  const auth = resolveAuthMiddleware(options.auth, options.gcpProjectId);
-  const optionalAuth = resolveOptionalAuthMiddleware(options.auth, options.gcpProjectId);
   const logger = resolveLogger(options.logger);
+  const auth = resolveAuthMiddleware(options.auth, logger);
+  const optionalAuth = resolveOptionalAuthMiddleware(options.auth);
   const rateLimitStore = resolveRateLimitStore(options.rateLimitStore);
 
   if (!options.parseManifestId) {
