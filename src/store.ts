@@ -1,6 +1,7 @@
 // Loads a DataStore plugin: either a plugin instance passed directly (e.g. by
 // a library consumer), or an npm package name to require() — falling back to
-// DATASTORE_PLUGIN and then the bundled MongoDB plugin.
+// DATASTORE_PLUGIN and then the bundled SQLite plugin (a real dependency of
+// this package, so it's always available with zero external setup).
 
 import type { DataStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 
@@ -10,7 +11,7 @@ export function loadDataStore(plugin?: DataStorePlugin | string): DataStorePlugi
   if (plugin && typeof plugin === 'object') return plugin;
 
   const packageName =
-    plugin ?? process.env.DATASTORE_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-mongodb';
+    plugin ?? process.env.DATASTORE_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-sqlite';
 
   try {
     return (require(packageName) as { default: DataStorePlugin }).default;

@@ -19,6 +19,12 @@ describe('loadDataStore', () => {
     expect(typeof (plugin as DataStorePlugin).findByBinding).toBe('function');
   });
 
+  it('defaults to the bundled SQLite plugin when nothing is configured', () => {
+    const plugin = loadDataStore(undefined);
+
+    expect(typeof (plugin as DataStorePlugin).findByBinding).toBe('function');
+  });
+
   it('throws a helpful error when the package is not installed', () => {
     expect(() => loadDataStore('@cognitiveproof/does-not-exist')).toThrow(
       'DataStore plugin "@cognitiveproof/does-not-exist" is not installed. Run `npm install @cognitiveproof/does-not-exist`.',

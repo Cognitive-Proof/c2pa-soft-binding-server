@@ -2,7 +2,7 @@
 
 Google Cloud Identity Platform `AuthPlugin` for [`@cognitiveproof/softbinding-api-server`](https://github.com/mrappard/c2pa-soft-binding-server) — the C2PA Soft Binding Resolution API server.
 
-This is the **default auth plugin** used when `createServer()` is given no `auth` option — it's bundled with the server and doesn't need to be installed separately unless you're using it outside of `createServer()`'s default resolution.
+`createServer()` has no default auth plugin — if `auth` is omitted, every request is allowed through with a startup warning. This plugin is an opt-in you install and wire in yourself when you want real auth backed by Google Cloud Identity Platform.
 
 Verifies `Authorization: Bearer <token>` headers as Google Cloud Identity Platform JWTs:
 
@@ -21,21 +21,18 @@ npm install @cognitiveproof/softbinding-api-server @cognitiveproof/softbinding-a
 
 ```ts
 import { createServer } from '@cognitiveproof/softbinding-api-server';
+import createGoogleAuthMiddleware from '@cognitiveproof/softbinding-api-plugin-google-auth';
 
 const app = createServer({
-  gcpProjectId: 'my-gcp-project',
-  // auth resolves to this plugin by default; only needed explicitly if
-  // overridden elsewhere via AUTH_PLUGIN
+  auth: createGoogleAuthMiddleware('my-gcp-project'),
 });
 ```
 
-Or set the `GCP_PROJECT_ID` environment variable and omit `gcpProjectId`.
-
 ## Configuration
 
-| Option / env var                     | Required                                                                 | Description                                                        |
-| ------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `gcpProjectId` (or `GCP_PROJECT_ID`) | Yes (unless `SKIP_ENV_VALIDATION` is set or a custom `auth` is provided) | The GCP project ID used as both the JWT issuer suffix and audience |
+| Argument       | Required | Description                                                        |
+| -------------- | -------- | ------------------------------------------------------------------ |
+| `gcpProjectId` | Yes      | The GCP project ID used as both the JWT issuer suffix and audience |
 
 ## License
 

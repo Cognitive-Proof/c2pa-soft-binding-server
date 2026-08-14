@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors } from 'jose';
 import type { RequestHandler } from 'express';
-import type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
+import type { Logger } from '@cognitiveproof/softbinding-api-plugin-types';
 
 export const AUTH_SCOPES_LOCALS_KEY = 'c2paAuthScopes';
 export const AUTH_CONTEXT_LOCALS_KEY = 'c2paAuthContext';
@@ -117,77 +117,47 @@ export function createOptionalJwtAuthMiddleware(options: JwtAuthOptions): Reques
   };
 }
 
-// Loads the auth plugin used as the default when `auth` is not provided:
-// either an npm package name to require() (e.g. the bundled
-// @cognitiveproof/softbinding-api-plugin-google-auth), falling back to
-// AUTH_PLUGIN.
-function loadAuthPlugin(): AuthPlugin<string> {
-  const packageName =
-    process.env.AUTH_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-google-auth';
-
-  try {
-    return (require(packageName) as { default: AuthPlugin<string> }).default;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'MODULE_NOT_FOUND') {
-      throw new Error(
-        `Auth plugin "${packageName}" is not installed. Run \`npm install ${packageName}\`.`,
-        {
-          cause: err,
-        },
-      );
-    }
-    throw err;
-  }
-}
+// A no-op middleware for requests that aren't authenticated: it leaves
+// AUTH_SCOPES_LOCALS_KEY/AUTH_CONTEXT_LOCALS_KEY unset, so requireAuthScope()
+// treats every request as authorized (see its "custom middleware remains
+// responsible for its own authorization" branch) and no AuthContext is ever
+// exposed to isManifestAuthRequired.
+const allowAllMiddleware: RequestHandler = (_req, _res, next) => next();
 
 /**
  * Resolves the auth middleware for createServer():
  * - `auth` as a function is used as-is (bring your own middleware).
  * - `auth` as a `JwtAuthOptions` object builds a generic JWT-verification
  *   middleware for that issuer/audience/JWKS.
- * - Otherwise loads the default auth plugin (Google Identity Platform,
- *   unless `AUTH_PLUGIN` overrides it) using `gcpProjectId` (or the
- *   `GCP_PROJECT_ID` env var), which is required unless
- *   `SKIP_ENV_VALIDATION` is set.
+ * - Otherwise, no authentication is performed: every request to `/v1`
+ *   routes is treated as fully authorized, and a warning is logged so this
+ *   doesn't go unnoticed in production. To require real auth, either pass
+ *   `auth` directly, or install and wire in an `AuthPlugin` package
+ *   yourself, e.g.
+ *   `auth: require('@cognitiveproof/softbinding-api-plugin-google-auth').default(gcpProjectId)`.
  */
 export function resolveAuthMiddleware(
   auth: RequestHandler | JwtAuthOptions | undefined,
-  gcpProjectId: string | undefined,
+  logger: Logger,
 ): RequestHandler {
   if (typeof auth === 'function') return auth;
   if (auth) return createJwtAuthMiddleware(auth);
 
-  const projectId = gcpProjectId ?? process.env.GCP_PROJECT_ID;
+  logger.warn(
+    '`auth` is not configured — every request to /v1 routes will be treated as fully ' +
+      'authorized, with no identity verification. This is not safe for production. Pass ' +
+      '`auth` (custom middleware, or `{ issuer, audience, jwksUri }` for an OIDC provider), ' +
+      "or wire in an AuthPlugin package yourself, e.g. `auth: require('@cognitiveproof/" +
+      "softbinding-api-plugin-google-auth').default(gcpProjectId)`. See the README section " +
+      '"Authentication" for details.',
+  );
 
-  if (!projectId && !process.env.SKIP_ENV_VALIDATION) {
-    throw new Error(
-      'Missing required configuration: provide `auth` (custom middleware or JWT config) or ' +
-        '`gcpProjectId` (or set the GCP_PROJECT_ID environment variable).',
-    );
-  }
-
-  return loadAuthPlugin()(projectId ?? '');
+  return allowAllMiddleware;
 }
 
 // A no-op middleware for cases where optional (non-failing) auth can't be
 // derived: it leaves AUTH_CONTEXT_LOCALS_KEY unset, i.e. always anonymous.
 const anonymousMiddleware: RequestHandler = (_req, _res, next) => next();
-
-// Loads the same default auth plugin package as loadAuthPlugin(), but its
-// optional named export (if the plugin provides one) instead of the
-// required default export. Bundled plugins (e.g. google-auth) provide this;
-// third-party AuthPlugin packages are not required to.
-function loadOptionalAuthPlugin(): AuthPlugin<string> | undefined {
-  const packageName =
-    process.env.AUTH_PLUGIN ?? '@cognitiveproof/softbinding-api-plugin-google-auth';
-
-  try {
-    return (require(packageName) as { createOptionalAuthMiddleware?: AuthPlugin<string> })
-      .createOptionalAuthMiddleware;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * Resolves a non-failing companion to resolveAuthMiddleware(): it exposes an
@@ -201,17 +171,14 @@ function loadOptionalAuthPlugin(): AuthPlugin<string> | undefined {
  *   non-failing mode, so no context is ever populated in that case.
  * - `auth` as `JwtAuthOptions` builds an optional JWT-verification
  *   middleware for that issuer/audience/JWKS.
- * - Otherwise uses the default auth plugin's optional export, if it
- *   provides one; falls back to always-anonymous if not.
+ * - Otherwise (no `auth` configured, same as resolveAuthMiddleware's
+ *   allow-all fallback) always anonymous — there's no token to verify.
  */
 export function resolveOptionalAuthMiddleware(
   auth: RequestHandler | JwtAuthOptions | undefined,
-  gcpProjectId: string | undefined,
 ): RequestHandler {
   if (typeof auth === 'function') return anonymousMiddleware;
   if (auth) return createOptionalJwtAuthMiddleware(auth);
 
-  const projectId = gcpProjectId ?? process.env.GCP_PROJECT_ID;
-  const plugin = loadOptionalAuthPlugin();
-  return plugin ? plugin(projectId ?? '') : anonymousMiddleware;
+  return anonymousMiddleware;
 }
