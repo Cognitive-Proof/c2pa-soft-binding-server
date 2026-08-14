@@ -1,5 +1,4 @@
 ---
-'@cognitiveproof/softbinding-api-server': major
 ---
 
 **Breaking:** `createServer()` no longer auto-loads an `AuthPlugin` when `auth` is omitted. Previously, omitting `auth` (with a `gcpProjectId`/`GCP_PROJECT_ID`) silently required the bundled `@cognitiveproof/softbinding-api-plugin-google-auth` package and verified Google Identity Platform JWTs by default; if neither `auth` nor a GCP project id was configured, `createServer()` threw at startup.
