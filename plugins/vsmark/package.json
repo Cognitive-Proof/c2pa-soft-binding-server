@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-plugin-vsmark",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Variation-selector text watermarking soft binding extractor for the C2PA Soft Binding Resolution API server",
   "license": "MIT",
   "repository": {
