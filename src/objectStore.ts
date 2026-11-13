@@ -2,9 +2,9 @@
 // by a library consumer), or an npm package name to require() — falling back
 // to OBJECTSTORE_PLUGIN and then the bundled GCS plugin.
 //
-// createServer() does not call this automatically — no bundled route
-// currently depends on blob storage. It's exported for consumers building
-// custom routes that need a configured ObjectStorePlugin.
+// createServer() calls this only to back the optional /v1/originals routes
+// (see the `originalsStore` option). It's also exported for consumers
+// building custom routes that need a configured ObjectStorePlugin.
 
 import type { ObjectStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 

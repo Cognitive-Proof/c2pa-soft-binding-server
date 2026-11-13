@@ -41,12 +41,13 @@ const bindingValue = decode(watermarkedArticle); // string | undefined
 
 ## API
 
-| Export                               | Description                                                                                                                                                                                   |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vsmarkExtractor`                    | An `Extractor` (`(buffer, mimeType) => Promise<string \| null>`). Decodes `buffer` as UTF-8 and returns the hidden binding value, or `null` if the asset isn't text or contains no watermark. |
-| `VSMARK_ALGORITHM`                   | The algorithm name `'com.cognitiveproof.vsmark.v1'`, for use as a key in `createServer({ extractors })` and reflected in `GET /v1/services/supportedAlgorithms`.                              |
-| `encode(secretMessage, carrierText)` | Returns `carrierText` with `secretMessage` hidden inside it via invisible variation selectors.                                                                                                |
-| `decode(text)`                       | Returns the hidden message previously embedded with `encode()`, or `undefined` if none is found.                                                                                              |
+| Export                                       | Description                                                                                                                                                                                   |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vsmarkExtractor`                            | An `Extractor` (`(buffer, mimeType) => Promise<string \| null>`). Decodes `buffer` as UTF-8 and returns the hidden binding value, or `null` if the asset isn't text or contains no watermark. |
+| `VSMARK_ALGORITHM`                           | The algorithm name `'com.cognitiveproof.vsmark.v1'`, for use as a key in `createServer({ extractors })` and reflected in `GET /v1/services/supportedAlgorithms`.                              |
+| `encode(secretMessage, carrierText)`         | Returns `carrierText` with `secretMessage` hidden inside it via invisible variation selectors.                                                                                                |
+| `encodeRepeated(secretMessage, carrierText)` | Like `encode()`, but repeats the hidden block across the whole text, so any excerpt of `2 × (11 + message bytes) − 1` characters (93 for a UUID) still decodes.                               |
+| `decode(text)`                               | Returns the hidden message previously embedded with `encode()`, or `undefined` if none is found.                                                                                              |
 
 ## How it works
 

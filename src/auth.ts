@@ -5,7 +5,8 @@ import type { Logger } from '@cognitiveproof/softbinding-api-plugin-types';
 export const AUTH_SCOPES_LOCALS_KEY = 'c2paAuthScopes';
 export const AUTH_CONTEXT_LOCALS_KEY = 'c2paAuthContext';
 
-export type AuthScope = 'fetch:manifests' | 'store:manifests' | 'store:bindings';
+export type AuthScope =
+  'fetch:manifests' | 'store:manifests' | 'store:bindings' | 'store:originals';
 
 /** Scopes and raw claims of a successfully verified bearer token. */
 export interface AuthContext {

@@ -30,8 +30,19 @@ export interface SoftBindingServerOptions {
   maxQueryValueLength?: number;
   /** A DataStorePlugin instance, or the name of an npm package implementing one. Default: DATASTORE_PLUGIN env var, else the bundled SQLite plugin (writes to ./data/softbinding.sqlite). */
   dataStore?: DataStorePlugin | string;
-  /** An ObjectStorePlugin instance, or the name of an npm package implementing one. Default: OBJECTSTORE_PLUGIN env var, else the bundled GCS plugin. */
+  /** An ObjectStorePlugin instance, or the name of an npm package implementing one. Default: OBJECTSTORE_PLUGIN env var. Backs `/v1/originals` unless `originalsStore` is set. */
   objectStore?: ObjectStorePlugin | string;
+  /**
+   * Enables `PUT`/`GET`/`DELETE /v1/originals/:manifestId`, which store the
+   * exact original text a manifest was signed over (privately, served back
+   * through this server so the URL embedded in the manifest never changes).
+   * An ObjectStorePlugin instance or npm package name. If omitted, falls back
+   * to `objectStore`, then the OBJECTSTORE_PLUGIN env var; if none of those is
+   * set, the routes are not mounted. Pass `false` to disable explicitly.
+   */
+  originalsStore?: ObjectStorePlugin | string | false;
+  /** Max size (bytes) of a stored original. Default: MAX_ORIGINAL_SIZE env var, else 10MB. */
+  maxOriginalSize?: number;
   /**
    * Authentication for `/v1` routes. Either an Express middleware (bring
    * your own auth scheme), or `{ issuer, audience, jwksUri }` to verify JWTs
@@ -142,6 +153,7 @@ export interface ResolvedConfig {
   maxJsonSize: number;
   maxReferenceSize: number;
   maxQueryValueLength: number;
+  maxOriginalSize: number;
   docs: boolean;
   helmet: HelmetOptions | false;
   rateLimit: Partial<RateLimitOptions> | false;
@@ -158,6 +170,8 @@ export function resolveConfig(options: SoftBindingServerOptions = {}): ResolvedC
       options.maxReferenceSize ?? parseInt(process.env.MAX_REFERENCE_SIZE ?? '104857600', 10),
     maxQueryValueLength:
       options.maxQueryValueLength ?? parseInt(process.env.MAX_QUERY_VALUE_LENGTH ?? '2048', 10),
+    maxOriginalSize:
+      options.maxOriginalSize ?? parseInt(process.env.MAX_ORIGINAL_SIZE ?? '10485760', 10),
     docs: options.docs ?? true,
     helmet: options.helmet ?? {},
     rateLimit:

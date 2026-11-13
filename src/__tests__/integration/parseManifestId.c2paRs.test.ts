@@ -13,8 +13,12 @@
  */
 import type { RequestHandler } from 'express';
 import request from 'supertest';
-import { signAssetSidecar, verifyManifestBytes } from 'c2pa-rs-javascript-library';
-import { createServer } from '../../index';
+import {
+  signAssetSidecar,
+  signAssetSidecarWithIngredients,
+  verifyManifestBytes,
+} from 'c2pa-rs-javascript-library';
+import { createServer, readActiveManifestLabel } from '../../index';
 import { createFakeDataStore } from '../helpers/fakeDataStore';
 
 const allowAll: RequestHandler = (_req, _res, next) => next();
@@ -154,5 +158,80 @@ describe('parseManifestId with c2pa-rs-javascript-library', () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(second.body.manifestId).toBe(first.body.manifestId);
+  });
+});
+
+describe('readActiveManifestLabel against c2pa-rs', () => {
+  // readActiveManifestLabel is the parse-only alternative for manifests c2pa-rs
+  // refuses to validate (e.g. a soft-binding algorithm not yet in the C2PA
+  // registry). Confirm it reads the same label c2pa-rs reports as active.
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">' +
+      '<rect width="10" height="10" fill="green"/></svg>',
+  );
+  const manifestDefinition = (title: string) => ({
+    claim_generator_info: [{ name: 'softbinding-server-integration-test' }],
+    title,
+    assertions: [
+      {
+        label: 'c2pa.actions',
+        data: {
+          actions: [
+            {
+              action: 'c2pa.created',
+              digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture',
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  it('matches the active manifest of a single-manifest store', async () => {
+    const signed = await signAssetSidecar({
+      format: 'image/svg+xml',
+      asset: svg,
+      manifestDefinition: manifestDefinition('single.svg'),
+      signcert: SIGNCERT,
+      pkey: PKEY,
+      alg: 'es256',
+    });
+    const bytes = Buffer.from(signed.manifest);
+
+    const expected = (await verifyManifestBytes(bytes, [])).manifestStore?.activeManifest;
+    expect(readActiveManifestLabel(bytes)).toBe(expected);
+  });
+
+  it('picks the active (last) manifest when the store also holds an ingredient manifest', async () => {
+    const parent = await signAssetSidecar({
+      format: 'image/svg+xml',
+      asset: svg,
+      manifestDefinition: manifestDefinition('parent.svg'),
+      signcert: SIGNCERT,
+      pkey: PKEY,
+      alg: 'es256',
+    });
+    const signed = await signAssetSidecarWithIngredients(
+      'image/svg+xml',
+      svg,
+      manifestDefinition('child.svg'),
+      SIGNCERT,
+      PKEY,
+      'es256',
+      [
+        {
+          format: 'image/svg+xml',
+          asset: svg,
+          title: 'parent.svg',
+          relationship: 'parentOf',
+          sidecar: parent.manifest,
+        },
+      ],
+    );
+    const bytes = Buffer.from(signed.manifest);
+
+    const store = (await verifyManifestBytes(bytes, [])).manifestStore;
+    expect(Object.keys(store?.manifests ?? {}).length).toBeGreaterThan(1);
+    expect(readActiveManifestLabel(bytes)).toBe(store?.activeManifest);
   });
 });
