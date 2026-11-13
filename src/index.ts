@@ -7,6 +7,7 @@ import swaggerUi from 'swagger-ui-express';
 import YAML from 'yaml';
 import { resolveConfig, type SoftBindingServerOptions } from './config';
 import { loadDataStore } from './store';
+import { loadObjectStore } from './objectStore';
 import { createSoftBindingRegistry } from './softBinding';
 import { resolveAuthMiddleware, resolveOptionalAuthMiddleware } from './auth';
 import { resolveLogger, createRequestLogger } from './logger';
@@ -14,6 +15,7 @@ import { resolveRateLimitStore } from './rateLimit';
 import { createQueryRouter } from './routes/query';
 import { createStoreRouter } from './routes/store';
 import { createFetchRouter } from './routes/fetch';
+import { createOriginalsRouter } from './routes/originals';
 import { createServiceRouter, C2PA_SPECIFICATION_VERSION } from './routes/service';
 
 export type { SoftBindingServerOptions } from './config';
@@ -42,6 +44,7 @@ export {
   requireAuthScope,
 } from './auth';
 export { createConsoleLogger } from './logger';
+export { readActiveManifestLabel } from './utils/manifestLabel';
 
 interface BodyParserError extends Error {
   type?: string;
@@ -64,6 +67,11 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
   const auth = resolveAuthMiddleware(options.auth, logger);
   const optionalAuth = resolveOptionalAuthMiddleware(options.auth);
   const rateLimitStore = resolveRateLimitStore(options.rateLimitStore);
+  const originalsStorePlugin =
+    options.originalsStore === false
+      ? undefined
+      : (options.originalsStore ?? options.objectStore ?? process.env.OBJECTSTORE_PLUGIN);
+  const originalsStore = originalsStorePlugin ? loadObjectStore(originalsStorePlugin) : undefined;
 
   if (!options.parseManifestId) {
     logger.warn(
@@ -150,7 +158,20 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       manifestHtmlRedirect: options.manifestHtmlRedirect,
     }),
   );
-  app.use('/v1', createServiceRouter({ softBinding, getServiceStatus: options.getServiceStatus }));
+  if (originalsStore) {
+    app.use(
+      '/v1',
+      createOriginalsRouter({ originalsStore, auth, maxOriginalSize: config.maxOriginalSize }),
+    );
+  }
+  app.use(
+    '/v1',
+    createServiceRouter({
+      softBinding,
+      getServiceStatus: options.getServiceStatus,
+      storeOriginals: Boolean(originalsStore),
+    }),
+  );
 
   app.use((_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 

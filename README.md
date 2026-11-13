@@ -61,6 +61,18 @@ The server implements all four route groups defined in the specification, mounte
 | `PUT`    | `/v1/bindings`              | Update the manifest an existing binding points to                              |
 | `DELETE` | `/v1/manifests/:manifestId` | Remove a manifest and its associated bindings                                  |
 
+### Originals — store and serve the signed text (optional)
+
+Mounted only when an object store is configured (`originalsStore`, `objectStore`, or `OBJECTSTORE_PLUGIN`), and advertised as the `storeOriginals` capability. Lets a manifest's asset reference point at a stable URL on this server for the exact text it was signed over.
+
+| Method   | Route                       | Auth              | Description                                                                                 |
+| -------- | --------------------------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| `PUT`    | `/v1/originals/:manifestId` | `store:originals` | Store (or overwrite) UTF-8 `text/plain` or `text/markdown`; the manifest need not exist yet |
+| `GET`    | `/v1/originals/:manifestId` | none (public)     | Return the stored bytes with their content type, cacheable forever                          |
+| `DELETE` | `/v1/originals/:manifestId` | `store:originals` | Delete the stored original                                                                  |
+
+`manifestId` must be `urn:c2pa:<uuid>`. Originals are kept in the object store's private bucket under `originals/<encoded id>` and always served through this server. Deleting a manifest does not delete its original.
+
 ### Fetch — retrieve manifests and receipts
 
 | Method | Route                                | Description                                                |
@@ -117,6 +129,7 @@ c2pa-soft-binding-server/
 │   ├── gcpBucket/             # @cognitiveproof/softbinding-api-plugin-gcp-bucket — ObjectStore plugin
 │   ├── awsBucket/             # @cognitiveproof/softbinding-api-plugin-aws-bucket — ObjectStore plugin
 │   ├── google-auth/           # @cognitiveproof/softbinding-api-plugin-google-auth — AuthPlugin (opt-in)
+│   ├── google-service-account-auth/ # @cognitiveproof/softbinding-api-plugin-google-service-account-auth — AuthPlugin (opt-in)
 │   ├── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
 │   ├── redis-rate-limit/      # @cognitiveproof/softbinding-api-plugin-redis-rate-limit — RateLimitStorePlugin
 │   └── vsmark/                # @cognitiveproof/softbinding-api-plugin-vsmark — Extractor (text watermark)
@@ -269,21 +282,22 @@ npm run dev      # development with auto-reload (requires nodemon)
 
 `src/cli.ts` calls `createServer()` with no overrides, so every option falls back to the environment variables below (see [`SoftBindingServerOptions`](src/config.ts) for the corresponding option name):
 
-| Variable                 | Default                                             | Description                                                                                                                                  |
-| ------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                   | `3000`                                              | HTTP port to listen on (CLI only — not a `createServer()` option)                                                                            |
-| `REPO_URI`               | `http://localhost:3000`                             | Public base URI of this repository, used in receipts (`repoUri`)                                                                             |
-| `RECEIPT_SECRET`         | random                                              | Secret for signing receipts — must be set for receipts to survive restart (`receiptSecret`)                                                  |
-| `MAX_UPLOAD_SIZE`        | `52428800`                                          | Max direct upload size in bytes (50 MB) (`maxUploadSize`)                                                                                    |
-| `MAX_JSON_SIZE`          | `10485760`                                          | Max JSON request body size in bytes (10 MB) (`maxJsonSize`)                                                                                  |
-| `MAX_REFERENCE_SIZE`     | `104857600`                                         | Max download size for byReference in bytes (100 MB) (`maxReferenceSize`)                                                                     |
-| `DATASTORE_PLUGIN`       | `@cognitiveproof/softbinding-api-plugin-sqlite`     | npm package implementing `DataStorePlugin` (`dataStore`) — the SQLite plugin ships as a real dependency, so this works with no extra install |
-| `OBJECTSTORE_PLUGIN`     | `@cognitiveproof/softbinding-api-plugin-gcp-bucket` | npm package implementing `ObjectStorePlugin` (`objectStore`)                                                                                 |
-| `LOGGER_PLUGIN`          | —                                                   | npm package implementing `LoggerPlugin`, used when `logger` is not set (default: built-in console JSON logger)                               |
-| `RATELIMIT_STORE_PLUGIN` | —                                                   | npm package implementing `RateLimitStorePlugin`, used when `rateLimitStore` is not set (default: in-memory store)                            |
-| `SKIP_ENV_VALIDATION`    | —                                                   | Set to skip per-plugin env validation (e.g. database connection strings) — useful for tests                                                  |
+| Variable                 | Default                                         | Description                                                                                                                                  |
+| ------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                   | `3000`                                          | HTTP port to listen on (CLI only — not a `createServer()` option)                                                                            |
+| `REPO_URI`               | `http://localhost:3000`                         | Public base URI of this repository, used in receipts (`repoUri`)                                                                             |
+| `RECEIPT_SECRET`         | random                                          | Secret for signing receipts — must be set for receipts to survive restart (`receiptSecret`)                                                  |
+| `MAX_UPLOAD_SIZE`        | `52428800`                                      | Max direct upload size in bytes (50 MB) (`maxUploadSize`)                                                                                    |
+| `MAX_JSON_SIZE`          | `10485760`                                      | Max JSON request body size in bytes (10 MB) (`maxJsonSize`)                                                                                  |
+| `MAX_REFERENCE_SIZE`     | `104857600`                                     | Max download size for byReference in bytes (100 MB) (`maxReferenceSize`)                                                                     |
+| `MAX_ORIGINAL_SIZE`      | `10485760`                                      | Max size of a stored original in bytes (10 MB) (`maxOriginalSize`)                                                                           |
+| `DATASTORE_PLUGIN`       | `@cognitiveproof/softbinding-api-plugin-sqlite` | npm package implementing `DataStorePlugin` (`dataStore`) — the SQLite plugin ships as a real dependency, so this works with no extra install |
+| `OBJECTSTORE_PLUGIN`     | —                                               | npm package implementing `ObjectStorePlugin` (`objectStore`); setting it enables `/v1/originals`                                             |
+| `LOGGER_PLUGIN`          | —                                               | npm package implementing `LoggerPlugin`, used when `logger` is not set (default: built-in console JSON logger)                               |
+| `RATELIMIT_STORE_PLUGIN` | —                                               | npm package implementing `RateLimitStorePlugin`, used when `rateLimitStore` is not set (default: in-memory store)                            |
+| `SKIP_ENV_VALIDATION`    | —                                               | Set to skip per-plugin env validation (e.g. database connection strings) — useful for tests                                                  |
 
-There is no env var for auth — there's no default auth plugin to select anymore (see [Authentication](#authentication) below). Pass `auth` to `createServer()` directly, or build an npm package name into your own wiring (e.g. `require('@cognitiveproof/softbinding-api-plugin-google-auth').default(process.env.GCP_PROJECT_ID)`).
+There is no general env var for auth — there's no default auth plugin to select anymore (see [Authentication](#authentication) below). Pass `auth` to `createServer()` directly, or build an npm package name into your own wiring (e.g. `require('@cognitiveproof/softbinding-api-plugin-google-auth').default(process.env.GCP_PROJECT_ID)`). The one exception: when `SA_AUTH_ACCOUNTS` is set, `src/cli.ts` wires in `@cognitiveproof/softbinding-api-plugin-google-service-account-auth` (install it separately) using `SA_AUTH_AUDIENCE` and `SA_AUTH_ACCOUNTS` — see that plugin's README.
 
 Each storage plugin reads its own additional environment variables — see [Storage, Auth, Logging, and Rate Limit Plugins](#storage-auth-logging-and-rate-limit-plugins).
 
@@ -340,6 +354,8 @@ c2paApp.listen(3000);
 | `maxUploadSize` / `maxJsonSize` / `maxReferenceSize` | `number`                                                                                                                           |
 | `dataStore`                                          | `DataStorePlugin \| string`                                                                                                        |
 | `objectStore`                                        | `ObjectStorePlugin \| string`                                                                                                      |
+| `originalsStore`                                     | `ObjectStorePlugin \| string \| false` — backs `/v1/originals` (default: `objectStore`, then `OBJECTSTORE_PLUGIN`, else disabled)  |
+| `maxOriginalSize`                                    | `number` (default 10 MB) — max size of a stored original                                                                           |
 | `auth`                                               | `RequestHandler \| { issuer, audience, jwksUri }` — auth for `/v1` routes; omitted means allow-all + a startup warning (see below) |
 | `extractors`                                         | `Record<string, Extractor>`                                                                                                        |
 | `parseManifestId`                                    | `(data: Buffer) => string \| Promise<string>` — derives `manifestId` from the uploaded manifest itself (see below)                 |
@@ -444,18 +460,19 @@ Persistence, authentication, logging, and rate limit storage are implemented ent
 
 ### Bundled plugins
 
-| Package                                                   | Implements             | Backend                                           | Required env vars                                                                                             |
-| --------------------------------------------------------- | ---------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `@cognitiveproof/softbinding-api-plugin-sqlite`           | `DataStorePlugin`      | SQLite (file or in-memory) — **default, bundled** | none — `SQLITE_DB_PATH` optional (default `./data/softbinding.sqlite`)                                        |
-| `@cognitiveproof/softbinding-api-plugin-mongodb`          | `DataStorePlugin`      | MongoDB                                           | `MONGO_DB_URI`                                                                                                |
-| `@cognitiveproof/softbinding-api-plugin-postgres`         | `DataStorePlugin`      | PostgreSQL                                        | `POSTGRES_URL`                                                                                                |
-| `@cognitiveproof/softbinding-api-plugin-mysql`            | `DataStorePlugin`      | MySQL                                             | `MYSQL_URL`                                                                                                   |
-| `@cognitiveproof/softbinding-api-plugin-gcp-bucket`       | `ObjectStorePlugin`    | Google Cloud Storage                              | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `GOOGLE_BUCKET_CREDENTIAL`                                 |
-| `@cognitiveproof/softbinding-api-plugin-aws-bucket`       | `ObjectStorePlugin`    | AWS S3 (or S3-compatible, e.g. MinIO/R2)          | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `AWS_REGION`, `AWS_S3_ENDPOINT`, `AWS_S3_FORCE_PATH_STYLE` |
-| `@cognitiveproof/softbinding-api-plugin-google-auth`      | `AuthPlugin<string>`   | Google Cloud Identity Platform                    | none — pass the GCP project id directly, e.g. `createGoogleAuthMiddleware(process.env.GCP_PROJECT_ID)`        |
-| `@cognitiveproof/softbinding-api-plugin-pino-logger`      | `LoggerPlugin`         | [pino](https://getpino.io/)                       | optional `LOG_LEVEL` (default `info`)                                                                         |
-| `@cognitiveproof/softbinding-api-plugin-redis-rate-limit` | `RateLimitStorePlugin` | Redis (via `rate-limit-redis`/`ioredis`)          | optional `REDIS_URL` (default `redis://localhost:6379`)                                                       |
-| `@cognitiveproof/softbinding-api-plugin-vsmark`           | `Extractor`            | Unicode variation-selector text watermark         | none                                                                                                          |
+| Package                                                              | Implements                              | Backend                                            | Required env vars                                                                                                      |
+| -------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `@cognitiveproof/softbinding-api-plugin-sqlite`                      | `DataStorePlugin`                       | SQLite (file or in-memory) — **default, bundled**  | none — `SQLITE_DB_PATH` optional (default `./data/softbinding.sqlite`)                                                 |
+| `@cognitiveproof/softbinding-api-plugin-mongodb`                     | `DataStorePlugin`                       | MongoDB                                            | `MONGO_DB_URI`                                                                                                         |
+| `@cognitiveproof/softbinding-api-plugin-postgres`                    | `DataStorePlugin`                       | PostgreSQL                                         | `POSTGRES_URL`                                                                                                         |
+| `@cognitiveproof/softbinding-api-plugin-mysql`                       | `DataStorePlugin`                       | MySQL                                              | `MYSQL_URL`                                                                                                            |
+| `@cognitiveproof/softbinding-api-plugin-gcp-bucket`                  | `ObjectStorePlugin`                     | Google Cloud Storage                               | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `GOOGLE_BUCKET_CREDENTIAL`                                          |
+| `@cognitiveproof/softbinding-api-plugin-aws-bucket`                  | `ObjectStorePlugin`                     | AWS S3 (or S3-compatible, e.g. MinIO/R2)           | `DATA_BUCKET_NAME`, `PUBLIC_BUCKET_NAME`, optional `AWS_REGION`, `AWS_S3_ENDPOINT`, `AWS_S3_FORCE_PATH_STYLE`          |
+| `@cognitiveproof/softbinding-api-plugin-google-auth`                 | `AuthPlugin<string>`                    | Google Cloud Identity Platform                     | none — pass the GCP project id directly, e.g. `createGoogleAuthMiddleware(process.env.GCP_PROJECT_ID)`                 |
+| `@cognitiveproof/softbinding-api-plugin-google-service-account-auth` | `AuthPlugin<ServiceAccountAuthOptions>` | Google service-account ID tokens + email allowlist | none — pass options directly, or read `SA_AUTH_AUDIENCE` / `SA_AUTH_ACCOUNTS` via `serviceAccountAuthOptionsFromEnv()` |
+| `@cognitiveproof/softbinding-api-plugin-pino-logger`                 | `LoggerPlugin`                          | [pino](https://getpino.io/)                        | optional `LOG_LEVEL` (default `info`)                                                                                  |
+| `@cognitiveproof/softbinding-api-plugin-redis-rate-limit`            | `RateLimitStorePlugin`                  | Redis (via `rate-limit-redis`/`ioredis`)           | optional `REDIS_URL` (default `redis://localhost:6379`)                                                                |
+| `@cognitiveproof/softbinding-api-plugin-vsmark`                      | `Extractor`                             | Unicode variation-selector text watermark          | none                                                                                                                   |
 
 The SQL plugins (`postgres`, `mysql`, `sqlite`) all use the same `manifests` / `bindings` schema with a foreign key from `bindings.manifest_id` to `manifests.id` (`ON DELETE CASCADE`), and create their tables automatically on first use.
 

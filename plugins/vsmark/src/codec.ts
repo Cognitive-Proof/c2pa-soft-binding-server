@@ -58,12 +58,9 @@ function removeVariationSelectors(text: string): string {
   return chars.join('');
 }
 
-/**
- * Hides `secretMessage` inside `carrierText` using invisible Unicode
- * variation selectors. Returns the carrier text unchanged (minus any
- * pre-existing variation selectors) if it's too short to carry the message.
- */
-export function encode(secretMessage: string, carrierText: string): string {
+// Builds the framed block ("VSR1" magic, version, length, payload, CRC32)
+// that encode()/encodeRepeated() spread across the carrier text.
+function buildSecretBlock(secretMessage: string): Uint8Array {
   const encoder = new TextEncoder();
   const payload = encoder.encode(secretMessage);
 
@@ -92,7 +89,16 @@ export function encode(secretMessage: string, carrierText: string): string {
   const secretBlock = new Uint8Array(headerAndPayload.length + 4);
   secretBlock.set(headerAndPayload, 0);
   secretBlock.set(crcBytes, headerAndPayload.length);
+  return secretBlock;
+}
 
+/**
+ * Hides `secretMessage` inside `carrierText` using invisible Unicode
+ * variation selectors. Returns the carrier text unchanged (minus any
+ * pre-existing variation selectors) if it's too short to carry the message.
+ */
+export function encode(secretMessage: string, carrierText: string): string {
+  const secretBlock = buildSecretBlock(secretMessage);
   const cleanedCarrier = removeVariationSelectors(carrierText);
   const carrierChars = [...cleanedCarrier];
 
@@ -106,6 +112,29 @@ export function encode(secretMessage: string, carrierText: string): string {
     if (i < secretBlock.length) {
       result.push(byteToVariationSelector(secretBlock[i]));
     }
+  }
+
+  return result.join('');
+}
+
+/**
+ * Like `encode()`, but repeats the hidden block back-to-back across the whole
+ * carrier text, so any excerpt of at least `2 × blockLength − 1` characters
+ * (blockLength = 11 + the message's UTF-8 length; 93 characters for a UUID)
+ * still contains one complete, decodable block.
+ */
+export function encodeRepeated(secretMessage: string, carrierText: string): string {
+  const secretBlock = buildSecretBlock(secretMessage);
+  const cleanedCarrier = removeVariationSelectors(carrierText);
+  const carrierChars = [...cleanedCarrier];
+
+  if (carrierChars.length < secretBlock.length) {
+    return cleanedCarrier;
+  }
+
+  const result: string[] = [];
+  for (let i = 0; i < carrierChars.length; i++) {
+    result.push(carrierChars[i], byteToVariationSelector(secretBlock[i % secretBlock.length]));
   }
 
   return result.join('');

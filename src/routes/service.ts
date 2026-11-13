@@ -17,6 +17,8 @@ export interface ServiceStatus {
 export interface ServiceRouterDeps {
   softBinding: SoftBindingRegistry;
   getServiceStatus?: () => ServiceStatus | Promise<ServiceStatus>;
+  /** Whether /originals routes are mounted; advertised as the `storeOriginals` capability. */
+  storeOriginals?: boolean;
 }
 
 export function createServiceRouter(deps: ServiceRouterDeps): Router {
@@ -35,7 +37,9 @@ export function createServiceRouter(deps: ServiceRouterDeps): Router {
   router.get('/services/capabilities', (_req: Request, res: Response) => {
     return res.json({
       c2paSpecificationVersion: C2PA_SPECIFICATION_VERSION,
-      supportedCapabilities: SUPPORTED_CAPABILITIES,
+      supportedCapabilities: deps.storeOriginals
+        ? [...SUPPORTED_CAPABILITIES, 'storeOriginals']
+        : SUPPORTED_CAPABILITIES,
     });
   });
 

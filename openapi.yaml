@@ -23,6 +23,11 @@ tags:
     description: Ingest manifests and manage bindings
   - name: Fetch
     description: Retrieve manifests and receipts
+  - name: Originals
+    description: >
+      Store and serve the exact original text a manifest was signed over.
+      Only available when the server is configured with an object store
+      (advertised as the `storeOriginals` capability).
   - name: Service
     description: Capability discovery
 
@@ -439,6 +444,110 @@ paths:
         '500':
           $ref: '#/components/responses/ServiceFailure'
 
+  /originals/{manifestId}:
+    parameters:
+      - name: manifestId
+        in: path
+        required: true
+        description: The manifest id the original was signed under, of the form `urn:c2pa:<uuid>`.
+        schema:
+          type: string
+          pattern: '^urn:c2pa:[0-9a-fA-F-]{36}$'
+    put:
+      tags: [Originals]
+      summary: Store the original text for a manifest
+      description: >
+        Stores the exact text a manifest was signed over. The manifest does not
+        need to exist yet (the original is uploaded first). Re-uploading
+        overwrites the stored text, so retries are safe.
+      operationId: putOriginal
+      security:
+        - auth:
+            - store:originals
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+          text/markdown:
+            schema:
+              type: string
+      responses:
+        '204':
+          description: Original stored
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          description: Content-Type is not UTF-8 text/plain or text/markdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+    get:
+      tags: [Originals]
+      summary: Retrieve the original text for a manifest
+      description: Public. Returns the stored bytes with their stored content type.
+      operationId: getOriginal
+      security: []
+      responses:
+        '200':
+          description: The stored original text
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=31536000, immutable
+          content:
+            text/plain:
+              schema:
+                type: string
+            text/markdown:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Original not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+    delete:
+      tags: [Originals]
+      summary: Delete the original text for a manifest
+      operationId: deleteOriginal
+      security:
+        - auth:
+            - store:originals
+      responses:
+        '204':
+          description: Original deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Original not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServiceFailure'
+
   /services/supportedAlgorithms:
     get:
       tags: [Service]
@@ -533,6 +642,7 @@ components:
             fetch:manifests: Query and fetch manifests and receipts
             store:manifests: Store and delete manifests
             store:bindings: Create and update soft bindings
+            store:originals: Store and delete original text
 
   parameters:
     value:

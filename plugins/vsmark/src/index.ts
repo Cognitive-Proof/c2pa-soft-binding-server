@@ -1,7 +1,7 @@
 import type { Extractor } from '@cognitiveproof/softbinding-api-plugin-types';
 import { decode } from './codec';
 
-export { encode, decode } from './codec';
+export { encode, encodeRepeated, decode } from './codec';
 
 /**
  * Soft binding algorithm name for the variation-selector text watermark,

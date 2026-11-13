@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-server",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "C2PA Soft Binding Resolution API v2.4 server implementation",
   "license": "MIT",
   "repository": {
@@ -21,7 +21,7 @@
     "conformance"
   ],
   "scripts": {
-    "build": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run build -w @cognitiveproof/softbinding-api-plugin-mongodb -w @cognitiveproof/softbinding-api-plugin-gcp-bucket -w @cognitiveproof/softbinding-api-plugin-aws-bucket -w @cognitiveproof/softbinding-api-plugin-sqlite -w @cognitiveproof/softbinding-api-plugin-postgres -w @cognitiveproof/softbinding-api-plugin-mysql -w @cognitiveproof/softbinding-api-plugin-google-auth -w @cognitiveproof/softbinding-api-plugin-pino-logger -w @cognitiveproof/softbinding-api-plugin-redis-rate-limit -w @cognitiveproof/softbinding-api-plugin-vsmark && tsc",
+    "build": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run build -w @cognitiveproof/softbinding-api-plugin-mongodb -w @cognitiveproof/softbinding-api-plugin-gcp-bucket -w @cognitiveproof/softbinding-api-plugin-aws-bucket -w @cognitiveproof/softbinding-api-plugin-sqlite -w @cognitiveproof/softbinding-api-plugin-postgres -w @cognitiveproof/softbinding-api-plugin-mysql -w @cognitiveproof/softbinding-api-plugin-google-auth -w @cognitiveproof/softbinding-api-plugin-google-service-account-auth -w @cognitiveproof/softbinding-api-plugin-pino-logger -w @cognitiveproof/softbinding-api-plugin-redis-rate-limit -w @cognitiveproof/softbinding-api-plugin-vsmark && tsc",
     "typecheck": "npm run build -w @cognitiveproof/softbinding-api-plugin-types && npm run typecheck --workspaces --if-present && tsc --noEmit && tsc -p tsconfig.jest.json",
     "start": "node dist/cli.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
@@ -53,6 +53,7 @@
     "@cognitiveproof/softbinding-api-plugin-aws-bucket": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-gcp-bucket": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-google-auth": "^1.0.0",
+    "@cognitiveproof/softbinding-api-plugin-google-service-account-auth": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-mongodb": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-mysql": "^1.0.0",
     "@cognitiveproof/softbinding-api-plugin-pino-logger": "^1.0.0",
@@ -68,6 +69,9 @@
       "optional": true
     },
     "@cognitiveproof/softbinding-api-plugin-google-auth": {
+      "optional": true
+    },
+    "@cognitiveproof/softbinding-api-plugin-google-service-account-auth": {
       "optional": true
     },
     "@cognitiveproof/softbinding-api-plugin-mongodb": {
