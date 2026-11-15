@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors } from 'jose';
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import type { Logger } from '@cognitiveproof/softbinding-api-plugin-types';
 
 export const AUTH_SCOPES_LOCALS_KEY = 'c2paAuthScopes';
@@ -122,7 +122,7 @@ export function createOptionalJwtAuthMiddleware(options: JwtAuthOptions): Reques
 // AUTH_SCOPES_LOCALS_KEY/AUTH_CONTEXT_LOCALS_KEY unset, so requireAuthScope()
 // treats every request as authorized (see its "custom middleware remains
 // responsible for its own authorization" branch) and no AuthContext is ever
-// exposed to isManifestAuthRequired.
+// exposed to isAuthRequired checks.
 const allowAllMiddleware: RequestHandler = (_req, _res, next) => next();
 
 /**
@@ -165,7 +165,7 @@ const anonymousMiddleware: RequestHandler = (_req, _res, next) => next();
  * AuthContext (scopes + claims) on res.locals[AUTH_CONTEXT_LOCALS_KEY] when
  * the caller presents a valid bearer token, but never rejects the request
  * when one is missing or invalid. Intended for per-resource authorization
- * decisions (e.g. `isManifestAuthRequired`) that need to know who's asking
+ * decisions (e.g. `isAuthRequired` checks) that need to know who's asking
  * without making auth mandatory for every request.
  *
  * - `auth` as a custom middleware function can't be safely re-invoked in a
@@ -182,4 +182,92 @@ export function resolveOptionalAuthMiddleware(
   if (auth) return createOptionalJwtAuthMiddleware(auth);
 
   return anonymousMiddleware;
+}
+
+/**
+ * Decides whether a read needs the usual auth. Called with the resource
+ * being read and, when available, the caller's AuthContext (see
+ * resolveOptionalAuthMiddleware for when that's populated). Return `true`
+ * to require a token with `fetch:manifests`, `false` to allow anyone.
+ */
+export type AuthRequiredCheck<T> = (
+  resource: T,
+  auth: AuthContext | undefined,
+) => boolean | Promise<boolean>;
+
+export interface ReadAuthGateOptions<T> {
+  /** If omitted, the gate is the plain `auth` + scope chain. */
+  check?: AuthRequiredCheck<T>;
+  auth: RequestHandler;
+  optionalAuth: RequestHandler;
+  requireScope: RequestHandler;
+  resource: (req: Request) => T;
+  /**
+   * If set, a caller that fails auth gets this 404 body instead of the auth
+   * middleware's own 401/403, so a private resource looks the same as a
+   * missing one.
+   */
+  notFound?: Record<string, unknown>;
+}
+
+// Stands in for `res` while the auth chain runs, so that a rejection (any
+// attempt to send a response) becomes a 404 instead. res.locals is
+// inherited, so scopes the auth middleware records still land on `res`.
+function rejectAsNotFound(res: Response, body: Record<string, unknown>): Response {
+  const proxy = Object.create(res) as Response;
+  const chain = () => proxy;
+  const send404 = () => {
+    if (!res.headersSent) res.status(404).json(body);
+    return proxy;
+  };
+  Object.assign(proxy, {
+    status: chain,
+    set: chain,
+    header: chain,
+    setHeader: chain,
+    type: chain,
+    json: send404,
+    send: send404,
+    sendStatus: send404,
+    end: send404,
+  });
+  return proxy;
+}
+
+/**
+ * Builds the middleware chain for a read-only route. Without a `check`, it's
+ * `auth` + the scope check, as on every other route. With one, the check
+ * runs first: `false` lets the request through anonymously, `true` runs the
+ * usual auth chain.
+ */
+export function createReadAuthGate<T>(options: ReadAuthGateOptions<T>): RequestHandler[] {
+  const { check, auth, optionalAuth, requireScope, resource, notFound } = options;
+  if (!check) return [auth, requireScope];
+
+  const gate: RequestHandler = async (req, res, next) => {
+    let required: boolean;
+    try {
+      const context = res.locals[AUTH_CONTEXT_LOCALS_KEY] as AuthContext | undefined;
+      required = await check(resource(req), context);
+    } catch {
+      res.status(500).json({ error: 'Service failure' });
+      return;
+    }
+    if (!required) {
+      next();
+      return;
+    }
+
+    const target = notFound ? rejectAsNotFound(res, notFound) : res;
+    try {
+      await auth(req, target, (err?: unknown) => {
+        if (err) return next(err);
+        requireScope(req, target, next);
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  return [optionalAuth, gate];
 }

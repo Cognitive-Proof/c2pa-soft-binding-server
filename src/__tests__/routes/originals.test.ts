@@ -20,6 +20,7 @@ function buildApp(overrides: Partial<Parameters<typeof createOriginalsRouter>[0]
     createOriginalsRouter({
       originalsStore,
       auth: allowAll,
+      optionalAuth: allowAll,
       maxOriginalSize: 1024,
       ...overrides,
     }),
@@ -147,11 +148,43 @@ describe('PUT /v1/originals/:manifestId', () => {
 });
 
 describe('GET /v1/originals/:manifestId', () => {
-  it('returns the stored bytes publicly, even when auth would reject', async () => {
-    const reject: RequestHandler = (_req, res) => {
-      res.status(401).json({ error: 'Authorization required' });
-    };
+  const reject: RequestHandler = (_req, res) => {
+    res.status(401).json({ error: 'Authorization required' });
+  };
+
+  it('requires auth by default', async () => {
     const { app, originalsStore } = buildApp({ auth: reject });
+    originalsStore.objects.set(KEY, { buffer: Buffer.from('x'), contentType: 'text/plain' });
+
+    const res = await request(app).get(`/v1/originals/${MANIFEST_ID}`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 (not 401) for an original the caller may not read', async () => {
+    const { app, originalsStore } = buildApp({ auth: reject, isOriginalAuthRequired: () => true });
+    originalsStore.objects.set(KEY, { buffer: Buffer.from('x'), contentType: 'text/plain' });
+
+    const res = await request(app).get(`/v1/originals/${MANIFEST_ID}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Original not found' });
+  });
+
+  it('passes the manifestId to the check', async () => {
+    const isOriginalAuthRequired = jest.fn().mockReturnValue(false);
+    const { app } = buildApp({ auth: reject, isOriginalAuthRequired });
+
+    await request(app).get(`/v1/originals/${MANIFEST_ID}`);
+
+    expect(isOriginalAuthRequired).toHaveBeenCalledWith(MANIFEST_ID, undefined);
+  });
+
+  it('serves the stored bytes anonymously when the check returns false', async () => {
+    const { app, originalsStore } = buildApp({
+      auth: reject,
+      isOriginalAuthRequired: () => false,
+    });
     originalsStore.objects.set(KEY, {
       buffer: Buffer.from('# Hello'),
       contentType: 'text/markdown; charset=utf-8',
@@ -231,7 +264,11 @@ describe('createServer originalsStore option', () => {
 
   it('mounts /v1/originals and advertises storeOriginals when configured', async () => {
     const originalsStore = createFakeObjectStore();
-    const app = createServer({ ...baseOptions, originalsStore });
+    const app = createServer({
+      ...baseOptions,
+      originalsStore,
+      isAuthRequired: { originals: () => false },
+    });
 
     const put = await request(app)
       .put(`/v1/originals/${MANIFEST_ID}`)

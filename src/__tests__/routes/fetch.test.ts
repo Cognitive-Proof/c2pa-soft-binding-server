@@ -1,7 +1,7 @@
 import express from 'express';
 import type { RequestHandler } from 'express';
 import request from 'supertest';
-import { AUTH_CONTEXT_LOCALS_KEY, AuthContext } from '../../auth';
+import { AUTH_CONTEXT_LOCALS_KEY, AUTH_SCOPES_LOCALS_KEY, AuthContext } from '../../auth';
 import { createFetchRouter, FetchRouterDeps } from '../../routes/fetch';
 import { buildReceipt as signReceipt } from '../../receipts';
 import { createFakeDataStore } from '../helpers/fakeDataStore';
@@ -62,19 +62,18 @@ describe('GET /v1/manifests/:manifestId', () => {
   });
 
   describe('with isManifestAuthRequired', () => {
-    const authenticated: RequestHandler = (_req, res, next) => {
-      res.locals[AUTH_CONTEXT_LOCALS_KEY] = {
-        scopes: ['fetch:manifests'],
-        claims: {},
-      } satisfies AuthContext;
-      next();
+    const reject: RequestHandler = (_req, res) => {
+      res.status(401).json({ error: 'Authorization required' });
     };
+    const withScopes =
+      (scopes: string[]): RequestHandler =>
+      (_req, res, next) => {
+        res.locals[AUTH_SCOPES_LOCALS_KEY] = scopes;
+        next();
+      };
 
-    it('serves a manifest with no token when the predicate returns false', async () => {
-      const { app, dataStore } = buildApp({
-        optionalAuth: allowAll,
-        isManifestAuthRequired: () => false,
-      });
+    it('serves a manifest with no token when the check returns false', async () => {
+      const { app, dataStore } = buildApp({ auth: reject, isManifestAuthRequired: () => false });
       const manifestId = await dataStore.addManifest(Buffer.from('public'), 'application/c2pa');
 
       const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}`);
@@ -82,9 +81,19 @@ describe('GET /v1/manifests/:manifestId', () => {
       expect(res.status).toBe(200);
     });
 
-    it('returns 404 (not 401/403) for a private manifest with no token', async () => {
+    it('returns 404 (not 401) for a private manifest with no token', async () => {
+      const { app, dataStore } = buildApp({ auth: reject, isManifestAuthRequired: () => true });
+      const manifestId = await dataStore.addManifest(Buffer.from('private'), 'application/c2pa');
+
+      const res = await request(app).get(`/v1/manifests/${encodeURIComponent(manifestId)}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: 'C2PA Manifest not found' });
+    });
+
+    it('returns 404 (not 403) for a private manifest without fetch:manifests', async () => {
       const { app, dataStore } = buildApp({
-        optionalAuth: allowAll,
+        auth: withScopes(['store:manifests']),
         isManifestAuthRequired: () => true,
       });
       const manifestId = await dataStore.addManifest(Buffer.from('private'), 'application/c2pa');
@@ -96,7 +105,7 @@ describe('GET /v1/manifests/:manifestId', () => {
 
     it('serves a private manifest when the caller has fetch:manifests scope', async () => {
       const { app, dataStore } = buildApp({
-        optionalAuth: authenticated,
+        auth: withScopes(['fetch:manifests']),
         isManifestAuthRequired: () => true,
       });
       const manifestId = await dataStore.addManifest(Buffer.from('private'), 'application/c2pa');
@@ -106,7 +115,14 @@ describe('GET /v1/manifests/:manifestId', () => {
       expect(res.status).toBe(200);
     });
 
-    it('passes the manifestId and AuthContext to the predicate', async () => {
+    it('passes the manifestId and AuthContext to the check', async () => {
+      const authenticated: RequestHandler = (_req, res, next) => {
+        res.locals[AUTH_CONTEXT_LOCALS_KEY] = {
+          scopes: ['fetch:manifests'],
+          claims: {},
+        } satisfies AuthContext;
+        next();
+      };
       const isManifestAuthRequired = jest.fn().mockReturnValue(false);
       const { app, dataStore } = buildApp({ optionalAuth: authenticated, isManifestAuthRequired });
       const manifestId = await dataStore.addManifest(Buffer.from('public'), 'application/c2pa');
@@ -117,6 +133,28 @@ describe('GET /v1/manifests/:manifestId', () => {
         scopes: ['fetch:manifests'],
         claims: {},
       });
+    });
+  });
+
+  describe('with isReceiptAuthRequired', () => {
+    const reject: RequestHandler = (_req, res) => {
+      res.status(401).json({ error: 'Authorization required' });
+    };
+
+    it('requires auth by default', async () => {
+      const { app } = buildApp({ auth: reject });
+
+      const res = await request(app).get('/v1/manifests/urn:c2pa:x/receipts');
+
+      expect(res.status).toBe(401);
+    });
+
+    it('lets anonymous callers through when the check returns false', async () => {
+      const { app } = buildApp({ auth: reject, isReceiptAuthRequired: () => false });
+
+      const res = await request(app).get('/v1/manifests/urn:c2pa:x/receipts');
+
+      expect(res.status).toBe(404);
     });
   });
 

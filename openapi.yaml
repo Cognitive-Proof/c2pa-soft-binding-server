@@ -495,9 +495,16 @@ paths:
     get:
       tags: [Originals]
       summary: Retrieve the original text for a manifest
-      description: Public. Returns the stored bytes with their stored content type.
+      description: >
+        Returns the stored bytes with their stored content type. Requires
+        `fetch:manifests` unless the server opens it with
+        `isAuthRequired.originals`. A caller who fails that check gets the
+        same 404 as a missing original.
       operationId: getOriginal
-      security: []
+      security:
+        - auth:
+            - fetch:manifests
+        - {}
       responses:
         '200':
           description: The stored original text

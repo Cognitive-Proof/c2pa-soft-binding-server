@@ -32,7 +32,7 @@ describeIfWritable('auth enforcement on store endpoints', () => {
 
 describe('auth on GET /manifests/:manifestId', () => {
   // Deliberately lenient: the spec allows per-manifest public/private policy
-  // (this server's own isManifestAuthRequired option is exactly that), so an
+  // (this server's own isAuthRequired.manifests option is exactly that), so an
   // unauthenticated fetch isn't required to be a strict 401 here.
   it('returns 200, 401, 403, or 404 for an unauthenticated fetch', async () => {
     const res = await api().get('/manifests/urn:c2pa:conformance-auth-check');
