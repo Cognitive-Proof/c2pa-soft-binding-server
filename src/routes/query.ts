@@ -1,7 +1,8 @@
 import express, { Request, RequestHandler, Response, Router } from 'express';
 import type { DataStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 import type { SoftBindingRegistry } from '../softBinding';
-import { requireAuthScope } from '../auth';
+import { AuthRequiredCheck, createReadAuthGate, requireAuthScope } from '../auth';
+import type { MatchQuery } from '../config';
 import { validateReferenceUrl } from '../utils/ssrf';
 import { parseRegionOfInterest } from '../utils/regionOfInterest';
 
@@ -78,16 +79,34 @@ export interface QueryRouterDeps {
   dataStore: DataStorePlugin;
   softBinding: SoftBindingRegistry;
   auth: RequestHandler;
+  /** Non-failing auth check — populates AuthContext when available, never rejects. */
+  optionalAuth: RequestHandler;
+  /** See SoftBindingServerOptions.isAuthRequired.matches. */
+  isMatchAuthRequired?: AuthRequiredCheck<MatchQuery>;
   maxUploadSize: number;
   maxReferenceSize: number;
   maxQueryValueLength: number;
 }
 
 export function createQueryRouter(deps: QueryRouterDeps): Router {
-  const { dataStore, softBinding, auth, maxUploadSize, maxReferenceSize, maxQueryValueLength } =
-    deps;
+  const { dataStore, softBinding, auth, optionalAuth, isMatchAuthRequired } = deps;
+  const { maxUploadSize, maxReferenceSize, maxQueryValueLength } = deps;
   const router = express.Router();
   const requireFetchScope = requireAuthScope('fetch:manifests');
+
+  // POST /matches/byBinding takes alg in the JSON body; the others take it
+  // in the query string.
+  const matchAuth = (endpoint: MatchQuery['endpoint'], algFrom: 'query' | 'body' = 'query') =>
+    createReadAuthGate<MatchQuery>({
+      check: isMatchAuthRequired,
+      auth,
+      optionalAuth,
+      requireScope: requireFetchScope,
+      resource: (req) => {
+        const alg = algFrom === 'body' ? (req.body ?? {}).alg : req.query.alg;
+        return { endpoint, alg: typeof alg === 'string' ? alg : undefined };
+      },
+    });
 
   // Body parser for raw binary assets (byContent route)
   const rawAsset = express.raw({
@@ -96,34 +115,37 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
   });
 
   // GET /matches/byBinding
-  router.get('/matches/byBinding', auth, requireFetchScope, async (req: Request, res: Response) => {
-    const { value, alg } = req.query as Record<string, string | undefined>;
-    const maxResults = parseInt((req.query.maxResults as string) ?? '10', 10);
+  router.get(
+    '/matches/byBinding',
+    ...matchAuth('byBinding'),
+    async (req: Request, res: Response) => {
+      const { value, alg } = req.query as Record<string, string | undefined>;
+      const maxResults = parseInt((req.query.maxResults as string) ?? '10', 10);
 
-    if (value && value.length > maxQueryValueLength) {
-      return res.status(414).json({
-        error: `value exceeds the server limit of ${maxQueryValueLength} characters; use POST /matches/byBinding instead`,
-      });
-    }
-    if (!value || !alg) {
-      return res.status(400).json({ error: 'Missing required query parameters: value, alg' });
-    }
-    if (isNaN(maxResults) || maxResults < 1) {
-      return res.status(400).json({ error: 'maxResults must be a positive integer' });
-    }
+      if (value && value.length > maxQueryValueLength) {
+        return res.status(414).json({
+          error: `value exceeds the server limit of ${maxQueryValueLength} characters; use POST /matches/byBinding instead`,
+        });
+      }
+      if (!value || !alg) {
+        return res.status(400).json({ error: 'Missing required query parameters: value, alg' });
+      }
+      if (isNaN(maxResults) || maxResults < 1) {
+        return res.status(400).json({ error: 'maxResults must be a positive integer' });
+      }
 
-    try {
-      return res.json({ matches: await dataStore.findByBinding(value, maxResults) });
-    } catch {
-      return res.status(500).json({ error: 'Service failure' });
-    }
-  });
+      try {
+        return res.json({ matches: await dataStore.findByBinding(value, maxResults) });
+      } catch {
+        return res.status(500).json({ error: 'Service failure' });
+      }
+    },
+  );
 
   // POST /matches/byBinding  (for large binding values that don't fit in a URL)
   router.post(
     '/matches/byBinding',
-    auth,
-    requireFetchScope,
+    ...matchAuth('byBinding', 'body'),
     async (req: Request, res: Response) => {
       const { value, alg } = (req.body ?? {}) as Record<string, string | undefined>;
       const maxResults = parseInt((req.query.maxResults as string) ?? '10', 10);
@@ -146,8 +168,7 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
   // POST /matches/byContent  (raw binary asset upload)
   router.post(
     '/matches/byContent',
-    auth,
-    requireFetchScope,
+    ...matchAuth('byContent'),
     rawAsset,
     async (req: Request, res: Response) => {
       const contentType = req.headers['content-type'] ?? '';
@@ -189,8 +210,7 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
   // POST /matches/byReference  (server downloads the asset — optional endpoint)
   router.post(
     '/matches/byReference',
-    auth,
-    requireFetchScope,
+    ...matchAuth('byReference'),
     async (req: Request, res: Response) => {
       const { referenceUrl, assetLength, assetType, region } = (req.body ?? {}) as {
         referenceUrl?: string;

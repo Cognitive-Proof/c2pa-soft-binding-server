@@ -18,7 +18,7 @@ import { createFetchRouter } from './routes/fetch';
 import { createOriginalsRouter } from './routes/originals';
 import { createServiceRouter, C2PA_SPECIFICATION_VERSION } from './routes/service';
 
-export type { SoftBindingServerOptions } from './config';
+export type { SoftBindingServerOptions, ReadAuthChecks, MatchQuery } from './config';
 export type {
   DataStorePlugin,
   ObjectStorePlugin,
@@ -29,7 +29,7 @@ export type {
 } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { Extractor, SupportedAlgorithms, SoftBindingRegistry } from './softBinding';
 export type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
-export type { AuthContext, AuthScope, JwtAuthOptions } from './auth';
+export type { AuthContext, AuthRequiredCheck, AuthScope, JwtAuthOptions } from './auth';
 export type { Logger, LoggerPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { HelmetOptions } from 'helmet';
 export type { Options as RateLimitOptions, Store as RateLimitStore } from 'express-rate-limit';
@@ -132,6 +132,8 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       dataStore,
       softBinding,
       auth,
+      optionalAuth,
+      isMatchAuthRequired: options.isAuthRequired?.matches,
       maxUploadSize: config.maxUploadSize,
       maxReferenceSize: config.maxReferenceSize,
       maxQueryValueLength: config.maxQueryValueLength,
@@ -154,14 +156,21 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       auth,
       optionalAuth,
       receiptSecret: config.receiptSecret,
-      isManifestAuthRequired: options.isManifestAuthRequired,
+      isManifestAuthRequired: options.isAuthRequired?.manifests,
+      isReceiptAuthRequired: options.isAuthRequired?.receipts,
       manifestHtmlRedirect: options.manifestHtmlRedirect,
     }),
   );
   if (originalsStore) {
     app.use(
       '/v1',
-      createOriginalsRouter({ originalsStore, auth, maxOriginalSize: config.maxOriginalSize }),
+      createOriginalsRouter({
+        originalsStore,
+        auth,
+        optionalAuth,
+        isOriginalAuthRequired: options.isAuthRequired?.originals,
+        maxOriginalSize: config.maxOriginalSize,
+      }),
     );
   }
   app.use(

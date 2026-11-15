@@ -1,10 +1,14 @@
 import express, { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 import type { ObjectStorePlugin } from '@cognitiveproof/softbinding-api-plugin-types';
-import { requireAuthScope } from '../auth';
+import { AuthRequiredCheck, createReadAuthGate, requireAuthScope } from '../auth';
 
 export interface OriginalsRouterDeps {
   originalsStore: ObjectStorePlugin;
   auth: RequestHandler;
+  /** Non-failing auth check — populates AuthContext when available, never rejects. */
+  optionalAuth: RequestHandler;
+  /** See SoftBindingServerOptions.isAuthRequired.originals. */
+  isOriginalAuthRequired?: AuthRequiredCheck<string>;
   maxOriginalSize: number;
 }
 
@@ -52,9 +56,19 @@ function validateManifestId(req: Request, res: Response, next: NextFunction): vo
 }
 
 export function createOriginalsRouter(deps: OriginalsRouterDeps): Router {
-  const { originalsStore, auth, maxOriginalSize } = deps;
+  const { originalsStore, auth, optionalAuth, isOriginalAuthRequired, maxOriginalSize } = deps;
   const router = express.Router();
   const requireOriginalsScope = requireAuthScope('store:originals');
+  // Like a manifest, a private original that the caller can't read gets the
+  // same 404 as a missing one.
+  const readAuthChain = createReadAuthGate({
+    check: isOriginalAuthRequired,
+    auth,
+    optionalAuth,
+    requireScope: requireAuthScope('fetch:manifests'),
+    resource: (req) => req.params.manifestId,
+    notFound: { error: 'Original not found' },
+  });
 
   // Read the body as raw bytes (not express.text) so the stored original is
   // byte-for-byte what the caller signed — no BOM stripping or re-encoding.
@@ -111,25 +125,31 @@ export function createOriginalsRouter(deps: OriginalsRouterDeps): Router {
     },
   );
 
-  // GET /originals/:manifestId  — no auth required: verifiers follow the
-  // manifest's asset reference here without credentials.
-  router.get('/originals/:manifestId', validateManifestId, async (req: Request, res: Response) => {
-    try {
-      const original = await originalsStore.loadData(originalKey(req.params.manifestId));
-      if (!original) {
-        return res.status(404).json({ error: 'Original not found' });
-      }
+  // GET /originals/:manifestId  — requires `fetch:manifests` unless
+  // isAuthRequired.originals opens it (e.g. so verifiers can follow the
+  // manifest's asset reference here without credentials).
+  router.get(
+    '/originals/:manifestId',
+    validateManifestId,
+    ...readAuthChain,
+    async (req: Request, res: Response) => {
+      try {
+        const original = await originalsStore.loadData(originalKey(req.params.manifestId));
+        if (!original) {
+          return res.status(404).json({ error: 'Original not found' });
+        }
 
-      res.set({
-        'Content-Type': servedContentType(original.contentType),
-        'Content-Disposition': 'inline',
-        'Cache-Control': IMMUTABLE_CACHE_CONTROL,
-      });
-      return res.status(200).send(original.buffer);
-    } catch {
-      return res.status(500).json({ error: 'Service failure' });
-    }
-  });
+        res.set({
+          'Content-Type': servedContentType(original.contentType),
+          'Content-Disposition': 'inline',
+          'Cache-Control': IMMUTABLE_CACHE_CONTROL,
+        });
+        return res.status(200).send(original.buffer);
+      } catch {
+        return res.status(500).json({ error: 'Service failure' });
+      }
+    },
+  );
 
   // DELETE /originals/:manifestId
   router.delete(

@@ -68,10 +68,10 @@ Mounted only when an object store is configured (`originalsStore`, `objectStore`
 | Method   | Route                       | Auth              | Description                                                                                 |
 | -------- | --------------------------- | ----------------- | ------------------------------------------------------------------------------------------- |
 | `PUT`    | `/v1/originals/:manifestId` | `store:originals` | Store (or overwrite) UTF-8 `text/plain` or `text/markdown`; the manifest need not exist yet |
-| `GET`    | `/v1/originals/:manifestId` | none (public)     | Return the stored bytes with their content type, cacheable forever                          |
+| `GET`    | `/v1/originals/:manifestId` | `fetch:manifests` | Return the stored bytes with their content type, cacheable forever                          |
 | `DELETE` | `/v1/originals/:manifestId` | `store:originals` | Delete the stored original                                                                  |
 
-`manifestId` must be `urn:c2pa:<uuid>`. Originals are kept in the object store's private bucket under `originals/<encoded id>` and always served through this server. Deleting a manifest does not delete its original.
+`manifestId` must be `urn:c2pa:<uuid>`. Originals are kept in the object store's private bucket under `originals/<encoded id>` and always served through this server. Deleting a manifest does not delete its original. To let verifiers read originals without a token, set `isAuthRequired.originals` (see [Public reads](#public-reads)).
 
 ### Fetch — retrieve manifests and receipts
 
@@ -91,6 +91,8 @@ Mounted only when an object store is configured (`originalsStore`, `objectStore`
 | `GET`  | `/.well-known/c2pa-soft-binding-resolution` | Discovery document — served at the domain root, _not_ under `/v1`    |
 
 All four are public — no auth is required. See [Server status and capability reporting](#server-status-and-capability-reporting) below.
+
+Every Query, Fetch and Originals read requires a token with `fetch:manifests` by default, as the spec does. [Public reads](#public-reads) explains how to open them to anonymous callers.
 
 ---
 
@@ -357,6 +359,7 @@ c2paApp.listen(3000);
 | `originalsStore`                                     | `ObjectStorePlugin \| string \| false` — backs `/v1/originals` (default: `objectStore`, then `OBJECTSTORE_PLUGIN`, else disabled)  |
 | `maxOriginalSize`                                    | `number` (default 10 MB) — max size of a stored original                                                                           |
 | `auth`                                               | `RequestHandler \| { issuer, audience, jwksUri }` — auth for `/v1` routes; omitted means allow-all + a startup warning (see below) |
+| `isAuthRequired`                                     | `{ manifests?, originals?, matches?, receipts? }` — per-group checks that open read routes to anonymous callers (see below)        |
 | `extractors`                                         | `Record<string, Extractor>`                                                                                                        |
 | `parseManifestId`                                    | `(data: Buffer) => string \| Promise<string>` — derives `manifestId` from the uploaded manifest itself (see below)                 |
 | `docs`                                               | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json`                                                                 |
@@ -404,6 +407,34 @@ createServer({
 });
 ```
 
+#### Public reads
+
+By default, every read route requires a token with the `fetch:manifests` scope. `isAuthRequired` opens groups of read routes to anonymous callers. Each key takes a check that is called per request with the resource being read and the caller's `AuthContext` (or `undefined`); returning `true` keeps the usual auth, `false` lets anyone through:
+
+```ts
+createServer({
+  isAuthRequired: {
+    manifests: (manifestId, auth) => false, // GET /manifests/:manifestId
+    originals: (manifestId, auth) => false, // GET /originals/:manifestId
+    matches: ({ endpoint, alg }, auth) => endpoint === 'byReference', // /matches/*
+    receipts: (manifestId, auth) => true, // GET/POST /manifests/:manifestId/receipts
+  },
+  // ...
+});
+```
+
+| Key         | Routes                                                                                  | Check receives      | When auth fails   |
+| ----------- | --------------------------------------------------------------------------------------- | ------------------- | ----------------- |
+| `manifests` | `GET /manifests/:manifestId`                                                            | `manifestId`        | 404, as if absent |
+| `originals` | `GET /originals/:manifestId`                                                            | `manifestId`        | 404, as if absent |
+| `matches`   | `GET`/`POST /matches/byBinding`, `POST /matches/byContent`, `POST /matches/byReference` | `{ endpoint, alg }` | 401/403           |
+| `receipts`  | `GET`/`POST /manifests/:manifestId/receipts`                                            | `manifestId`        | 401/403           |
+
+- A missing key means that group always requires auth.
+- Routes that change data (storing or deleting manifests, bindings and originals) always require auth and their own scope; `isAuthRequired` can't open them.
+- The check only receives an `AuthContext` when `auth` is `{ issuer, audience, jwksUri }`. With custom `auth` middleware, or none, it's always `undefined`, so decide per resource rather than per caller. When the check returns `true`, your `auth` middleware runs as usual.
+- Opening `matches` makes `byContent` an anonymous upload endpoint (bounded by `maxUploadSize` and the rate limit), and `byReference` an anonymous URL fetcher; the `alg`/`endpoint` arguments let you open only what you need.
+
 By default, logs are written as JSON lines to stdout/stderr. To use a different logger, pass `logger`:
 
 ```ts
@@ -442,7 +473,7 @@ createServer({
 });
 ```
 
-The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStorePlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, `AuthScope`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, `requireAuthScope`, `AUTH_SCOPES_LOCALS_KEY`, and `createConsoleLogger` helpers.
+The package also re-exports the `DataStorePlugin`, `ObjectStorePlugin`, `AuthPlugin`, `Logger`, `LoggerPlugin`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStorePlugin`, `Match`, `ManifestEntry`, `Receipt`, `LoadedData`, `Extractor`, `AuthScope`, `AuthContext`, `AuthRequiredCheck`, `ReadAuthChecks`, `MatchQuery`, and `JwtAuthOptions` types from `@cognitiveproof/softbinding-api-plugin-types`/`src/auth.ts`, plus `loadDataStore`, `loadObjectStore`, `createJwtAuthMiddleware`, `requireAuthScope`, `AUTH_SCOPES_LOCALS_KEY`, and `createConsoleLogger` helpers.
 
 ---
 

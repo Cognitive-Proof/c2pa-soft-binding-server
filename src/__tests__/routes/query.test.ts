@@ -27,6 +27,7 @@ function buildApp(overrides: Partial<Parameters<typeof createQueryRouter>[0]> = 
       dataStore,
       softBinding,
       auth: allowAll,
+      optionalAuth: allowAll,
       maxUploadSize: 1024 * 1024,
       maxReferenceSize: 1024 * 1024,
       maxQueryValueLength: 2048,
@@ -423,5 +424,74 @@ describe('POST /v1/matches/byReference', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/exceeded 5 redirects/);
     expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe('isMatchAuthRequired', () => {
+  const reject: RequestHandler = (_req, res) => {
+    res.status(401).json({ error: 'Authorization required' });
+  };
+
+  it('requires auth by default', async () => {
+    const { app } = buildApp({ auth: reject });
+
+    const res = await request(app).get('/v1/matches/byBinding?value=abc&alg=test.alg');
+
+    expect(res.status).toBe(401);
+  });
+
+  it('lets anonymous callers query when the check returns false', async () => {
+    const { app } = buildApp({ auth: reject, isMatchAuthRequired: () => false });
+
+    const byBinding = await request(app).get('/v1/matches/byBinding?value=abc&alg=test.alg');
+    const byContent = await request(app)
+      .post('/v1/matches/byContent?alg=test.alg')
+      .set('Content-Type', 'text/plain')
+      .send('watermarked text');
+
+    expect(byBinding.status).toBe(200);
+    expect(byContent.status).toBe(200);
+  });
+
+  it("returns the auth middleware's 401 when the check returns true", async () => {
+    const { app } = buildApp({ auth: reject, isMatchAuthRequired: () => true });
+
+    const res = await request(app).get('/v1/matches/byBinding?value=abc&alg=test.alg');
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Authorization required' });
+  });
+
+  it('tells the check which endpoint and alg are being queried', async () => {
+    const isMatchAuthRequired = jest.fn().mockReturnValue(false);
+    const { app } = buildApp({ auth: reject, isMatchAuthRequired });
+
+    await request(app).get('/v1/matches/byBinding?value=abc&alg=get.alg');
+    await request(app).post('/v1/matches/byBinding').send({ value: 'abc', alg: 'post.alg' });
+    await request(app)
+      .post('/v1/matches/byContent?alg=content.alg')
+      .set('Content-Type', 'text/plain')
+      .send('text');
+    await request(app).post('/v1/matches/byReference').send({});
+
+    expect(isMatchAuthRequired.mock.calls).toEqual([
+      [{ endpoint: 'byBinding', alg: 'get.alg' }, undefined],
+      [{ endpoint: 'byBinding', alg: 'post.alg' }, undefined],
+      [{ endpoint: 'byContent', alg: 'content.alg' }, undefined],
+      [{ endpoint: 'byReference', alg: undefined }, undefined],
+    ]);
+  });
+
+  it('returns 500 when the check throws', async () => {
+    const { app } = buildApp({
+      auth: reject,
+      isMatchAuthRequired: () => {
+        throw new Error('boom');
+      },
+    });
+
+    const res = await request(app).get('/v1/matches/byBinding?value=abc&alg=test.alg');
+
+    expect(res.status).toBe(500);
   });
 });

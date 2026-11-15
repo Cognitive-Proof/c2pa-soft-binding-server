@@ -1,6 +1,6 @@
 import express, { Request, RequestHandler, Response, Router } from 'express';
 import type { DataStorePlugin, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
-import { AUTH_CONTEXT_LOCALS_KEY, AuthContext, requireAuthScope } from '../auth';
+import { AuthRequiredCheck, createReadAuthGate, requireAuthScope } from '../auth';
 import { verifyReceipt } from '../receipts';
 
 export interface FetchRouterDeps {
@@ -9,11 +9,10 @@ export interface FetchRouterDeps {
   /** Non-failing auth check — populates AuthContext when available, never rejects. */
   optionalAuth: RequestHandler;
   receiptSecret: string;
-  /** See SoftBindingServerOptions.isManifestAuthRequired. Defaults to always `true`. */
-  isManifestAuthRequired?: (
-    manifestId: string,
-    auth: AuthContext | undefined,
-  ) => boolean | Promise<boolean>;
+  /** See SoftBindingServerOptions.isAuthRequired.manifests. */
+  isManifestAuthRequired?: AuthRequiredCheck<string>;
+  /** See SoftBindingServerOptions.isAuthRequired.receipts. */
+  isReceiptAuthRequired?: AuthRequiredCheck<string>;
   /** See SoftBindingServerOptions.manifestHtmlRedirect. */
   manifestHtmlRedirect?: (manifestId: string) => string;
 }
@@ -24,10 +23,11 @@ function acceptsHtml(req: Request): boolean {
 }
 
 export function createFetchRouter(deps: FetchRouterDeps): Router {
-  const { dataStore, auth, optionalAuth, receiptSecret, isManifestAuthRequired } = deps;
-  const { manifestHtmlRedirect } = deps;
+  const { dataStore, auth, optionalAuth, receiptSecret } = deps;
+  const { isManifestAuthRequired, isReceiptAuthRequired, manifestHtmlRedirect } = deps;
   const router = express.Router();
   const requireFetchScope = requireAuthScope('fetch:manifests');
+  const manifestIdParam = (req: Request) => req.params.manifestId;
 
   // Redirects browser navigations (Accept: text/html) to manifestHtmlRedirect's
   // URL for the requested manifestId, before auth or the manifest lookup run —
@@ -42,15 +42,25 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
   // GET /manifests/:manifestId
   // Returns the full C2PA Manifest Store (or only the active manifest if requested).
   //
-  // Without isManifestAuthRequired, this is gated exactly like every other
+  // Without isAuthRequired.manifests, this is gated exactly like every other
   // route (mandatory `auth` + `fetch:manifests` scope, 401/403 as usual).
-  // With it, auth becomes optional up front so the predicate can see who's
-  // asking, and a failing check gets the same 404 as a nonexistent manifest
-  // rather than 401/403 — a private manifest's existence isn't revealed to a
-  // caller who can't read it.
-  const manifestAuthChain: RequestHandler[] = isManifestAuthRequired
-    ? [optionalAuth]
-    : [auth, requireFetchScope];
+  // With it, a caller who needs auth and fails it gets the same 404 as a
+  // nonexistent manifest, so a private manifest's existence isn't revealed.
+  const manifestAuthChain = createReadAuthGate({
+    check: isManifestAuthRequired,
+    auth,
+    optionalAuth,
+    requireScope: requireFetchScope,
+    resource: manifestIdParam,
+    notFound: { error: 'C2PA Manifest not found' },
+  });
+  const receiptAuthChain = createReadAuthGate({
+    check: isReceiptAuthRequired,
+    auth,
+    optionalAuth,
+    requireScope: requireFetchScope,
+    resource: manifestIdParam,
+  });
 
   router.get(
     '/manifests/:manifestId',
@@ -63,15 +73,6 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
         const entry = await dataStore.getManifest(manifestId);
         if (!entry) {
           return res.status(404).json({ error: 'C2PA Manifest not found' });
-        }
-
-        if (isManifestAuthRequired) {
-          const authContext = res.locals[AUTH_CONTEXT_LOCALS_KEY] as AuthContext | undefined;
-          const authRequired = await isManifestAuthRequired(manifestId, authContext);
-
-          if (authRequired && !authContext?.scopes.includes('fetch:manifests')) {
-            return res.status(404).json({ error: 'C2PA Manifest not found' });
-          }
         }
 
         // In a real implementation with returnActiveManifest=true you would parse
@@ -88,8 +89,7 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
   // GET /manifests/:manifestId/receipts  — fetch the stored receipt + verification status
   router.get(
     '/manifests/:manifestId/receipts',
-    auth,
-    requireFetchScope,
+    ...receiptAuthChain,
     async (req: Request, res: Response) => {
       const { manifestId } = req.params;
       try {
@@ -114,8 +114,7 @@ export function createFetchRouter(deps: FetchRouterDeps): Router {
   // POST /manifests/:manifestId/receipts  — verify a caller-supplied receipt
   router.post(
     '/manifests/:manifestId/receipts',
-    auth,
-    requireFetchScope,
+    ...receiptAuthChain,
     async (req: Request, res: Response) => {
       const { manifestId } = req.params;
       const receipt = req.body as Receipt | undefined;

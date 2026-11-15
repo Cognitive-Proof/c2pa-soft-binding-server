@@ -8,7 +8,26 @@ import type {
   Logger,
 } from '@cognitiveproof/softbinding-api-plugin-types';
 import type { Extractor } from './softBinding';
-import type { AuthContext, JwtAuthOptions } from './auth';
+import type { AuthRequiredCheck, JwtAuthOptions } from './auth';
+
+/** What a `matches` check is told about the query being made. */
+export interface MatchQuery {
+  endpoint: 'byBinding' | 'byContent' | 'byReference';
+  /** The `alg` the caller asked for, if any. */
+  alg?: string;
+}
+
+/** See SoftBindingServerOptions.isAuthRequired. */
+export interface ReadAuthChecks {
+  /** `GET /manifests/:manifestId`, called with the manifestId. */
+  manifests?: AuthRequiredCheck<string>;
+  /** `GET /originals/:manifestId`, called with the manifestId. */
+  originals?: AuthRequiredCheck<string>;
+  /** `GET`/`POST /matches/byBinding`, `POST /matches/byContent` and `POST /matches/byReference`. */
+  matches?: AuthRequiredCheck<MatchQuery>;
+  /** `GET`/`POST /manifests/:manifestId/receipts`, called with the manifestId. */
+  receipts?: AuthRequiredCheck<string>;
+}
 
 export interface SoftBindingServerOptions {
   /** Public base URI of this server, embedded in receipts. Default: REPO_URI env var, then http://localhost:3000 */
@@ -57,25 +76,25 @@ export interface SoftBindingServerOptions {
    */
   auth?: RequestHandler | JwtAuthOptions;
   /**
-   * Per-manifest authorization check for `GET /manifests/:manifestId`,
-   * letting you mark specific manifests public. Called with the requested
-   * manifestId and, if the caller presented a valid bearer token, their
+   * Opens read-only routes to anonymous callers. Each key covers one group
+   * of reads and takes a check called per request with the resource being
+   * read and, if the caller presented a valid bearer token, their
    * scopes/claims (`undefined` for an anonymous or invalid-token request).
    * Return `true` to require the usual `fetch:manifests` scope, `false` to
-   * allow anyone to fetch that manifest. If omitted, all manifests require
-   * auth (unchanged default behavior). A request that fails this check gets
-   * the same 404 as a manifest that doesn't exist, so private manifests
-   * don't reveal their existence to unauthorized callers.
+   * allow anyone. A missing key means that group always requires auth.
+   * Routes that change data (storing or deleting manifests, bindings and
+   * originals) always require auth and aren't configurable here.
    *
-   * Only populated with an `AuthContext` when `auth` is `JwtAuthOptions` —
-   * custom `auth` middleware functions can't be safely re-invoked in a
-   * non-failing mode, and there's no token to verify when `auth` is
-   * omitted, so this is always called with `undefined` in both cases.
+   * A caller that fails a `manifests` or `originals` check gets the same 404
+   * as a missing resource, so private items don't reveal their existence.
+   * `matches` and `receipts` return the usual 401/403.
+   *
+   * The `AuthContext` is only populated when `auth` is `JwtAuthOptions` —
+   * custom `auth` middleware can't be safely re-invoked in a non-failing
+   * mode, and there's no token to verify when `auth` is omitted, so checks
+   * are always called with `undefined` in both cases.
    */
-  isManifestAuthRequired?: (
-    manifestId: string,
-    auth: AuthContext | undefined,
-  ) => boolean | Promise<boolean>;
+  isAuthRequired?: ReadAuthChecks;
   /**
    * Redirects browser requests for `GET /manifests/:manifestId` to an
    * HTML page instead of returning the raw `application/c2pa` bytes.

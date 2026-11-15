@@ -7,6 +7,34 @@ import type { Logger } from '@cognitiveproof/softbinding-api-plugin-types';
 const allowAll: RequestHandler = (_req, _res, next) => next();
 
 describe('createServer', () => {
+  it('applies each isAuthRequired key to its routes and leaves the rest locked', async () => {
+    const reject: RequestHandler = (_req, res) => {
+      res.status(401).json({ error: 'Authorization required' });
+    };
+    const dataStore = createFakeDataStore();
+    const manifestId = await dataStore.addManifest(Buffer.from('m'), 'application/c2pa');
+    const id = encodeURIComponent(manifestId);
+    const app = createServer({
+      dataStore,
+      auth: reject,
+      docs: false,
+      isAuthRequired: {
+        manifests: () => false,
+        matches: () => false,
+        receipts: () => false,
+      },
+    });
+
+    expect((await request(app).get(`/v1/manifests/${id}`)).status).toBe(200);
+    expect((await request(app).get('/v1/matches/byBinding?value=v&alg=a')).status).toBe(200);
+    expect((await request(app).get(`/v1/manifests/${id}/receipts`)).status).toBe(404);
+    // Writes stay authenticated whatever isAuthRequired says.
+    expect((await request(app).delete(`/v1/manifests/${id}`)).status).toBe(401);
+    expect(
+      (await request(app).post('/v1/bindings').send({ bindingValue: 'v', manifestId })).status,
+    ).toBe(401);
+  });
+
   it('responds to the health check', async () => {
     const app = createServer({ dataStore: createFakeDataStore(), auth: allowAll, docs: false });
 
