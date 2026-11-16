@@ -1,5 +1,5 @@
 import { api } from '../src/client';
-import { fetchWellKnown } from '../src/discovery';
+import { fetchWellKnown, hasDiscoveryEndpoints } from '../src/discovery';
 import { getConformanceEnv } from '../src/env';
 
 describe('services.supportedAlgorithms shape', () => {
@@ -14,7 +14,10 @@ describe('services.supportedAlgorithms shape', () => {
   });
 });
 
-describe('discovery endpoints agree with each other', () => {
+// Both endpoints were added after the published 2.4 spec.
+const describeIfDiscovery = hasDiscoveryEndpoints() ? describe : describe.skip;
+
+describeIfDiscovery('discovery endpoints agree with each other', () => {
   it('capabilities and well-known report the same c2paSpecificationVersion', async () => {
     const capabilities = await api().get('/services/capabilities');
     const wellKnown = await fetchWellKnown(getConformanceEnv().baseUrl);

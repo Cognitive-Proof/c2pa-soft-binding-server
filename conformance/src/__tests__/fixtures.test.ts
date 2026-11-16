@@ -35,6 +35,30 @@ describe('createTestManifest / cleanupAll', () => {
     expect(deletedId).toBe('urn:c2pa:test-1');
   });
 
+  it('posts a valid signed manifest store, a new one each time', async () => {
+    const bodies: Buffer[] = [];
+    server = await startStubServer((req) => {
+      if (req.method === 'POST') {
+        bodies.push(req.body);
+        return { status: 200, body: { manifestId: `urn:c2pa:test-${bodies.length}` } };
+      }
+      return { status: 204 };
+    });
+    process.env.CONFORMANCE_BASE_URL = server.baseUrl;
+    process.env.CONFORMANCE_TOKEN = 'test-token';
+
+    const first = await createTestManifest();
+    const second = await createTestManifest();
+
+    expect(bodies[0].equals(first.data)).toBe(true);
+    // Each JUMBF manifest store carries its manifest label in plain ASCII.
+    const label = (data: Buffer) => /urn:c2pa:[0-9a-f-]{36}/.exec(data.toString('latin1'))?.[0];
+    expect(label(first.data)).toBeDefined();
+    expect(label(second.data)).toBeDefined();
+    expect(label(second.data)).not.toBe(label(first.data));
+    await cleanupAll();
+  });
+
   it('requests returnReceipt=true and returns the receipt when asked', async () => {
     server = await startStubServer((req) => {
       if (req.method === 'POST' && req.url === '/manifests?returnReceipt=true') {

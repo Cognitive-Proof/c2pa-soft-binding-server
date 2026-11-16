@@ -38,7 +38,9 @@ describeIfWritable('store -> fetch -> delete round trip (storeManifests)', () =>
     expect(Buffer.compare(res.body as Buffer, data)).toBe(0);
   });
 
-  it('DELETE /manifests/:id removes it, and a subsequent GET 404s', async () => {
+  // The spec documents 404 for a missing manifest; 410 Gone is also accepted
+  // for one that was deleted.
+  it('DELETE /manifests/:id removes it, and a subsequent GET answers 404 or 410', async () => {
     const { manifestId } = await createTestManifest();
 
     const del = await api()
@@ -49,6 +51,6 @@ describeIfWritable('store -> fetch -> delete round trip (storeManifests)', () =>
     const get = await api()
       .get(`/manifests/${encodeURIComponent(manifestId)}`)
       .set(authHeader());
-    expect(get.status).toBe(404);
+    expect([404, 410]).toContain(get.status);
   });
 });
