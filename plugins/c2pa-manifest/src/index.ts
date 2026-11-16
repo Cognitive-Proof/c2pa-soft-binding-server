@@ -123,8 +123,10 @@ function blockValue(value: unknown): string | undefined {
   if (Array.isArray(value) && value.every((b) => Number.isInteger(b) && b >= 0 && b < 256)) {
     return value.length ? Buffer.from(value as number[]).toString('base64') : undefined;
   }
-  if (typeof value === 'string' && /^[A-Za-z0-9+/]+={0,2}$/.test(value) && value.length % 4 === 0) {
-    return value;
+  if (typeof value === 'string') {
+    // c2pa-rs writes byte strings in its JSON report as b64'…'.
+    const b64 = /^b64'(.*)'$/.exec(value)?.[1] ?? value;
+    if (/^[A-Za-z0-9+/]+={0,2}$/.test(b64) && b64.length % 4 === 0) return b64;
   }
   return undefined;
 }
