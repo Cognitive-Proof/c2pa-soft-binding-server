@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-conformance",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Black-box conformance test harness for third-party C2PA Soft Binding Resolution API implementations",
   "license": "MIT",
   "repository": {
