@@ -175,13 +175,24 @@ describe('softBindings', () => {
     ]);
   });
 
+  it("reads c2pa-rs's b64'…' byte strings", () => {
+    expect(
+      softBindings([
+        { label: 'c2pa.soft-binding', data: { alg: 'a', blocks: [{ value: "b64'AAE='" }] } },
+      ]),
+    ).toEqual([{ alg: 'a', value: 'AAE=' }]);
+  });
+
   it('skips blocks without an algorithm or a byte-string value', () => {
     expect(
       softBindings([
         { label: 'c2pa.soft-binding', data: { blocks: [{ value: 'AAE=' }] } },
         {
           label: 'c2pa.soft-binding',
-          data: { alg: 'a', blocks: [{ value: 'not base64!' }, { value: [] }, {}] },
+          data: {
+            alg: 'a',
+            blocks: [{ value: 'not base64!' }, { value: "b64'not base64!'" }, { value: [] }, {}],
+          },
         },
       ]),
     ).toEqual([]);

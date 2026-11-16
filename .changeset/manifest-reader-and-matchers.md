@@ -1,5 +1,4 @@
 ---
-'@cognitiveproof/softbinding-api-server': minor
 '@cognitiveproof/softbinding-api-plugin-types': minor
 ---
 
