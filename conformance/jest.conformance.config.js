@@ -4,11 +4,20 @@
 // directly). Deliberately NOT picked up by the root `npm test` / this
 // package's own `npm test` (see jest.config.js) so CI never accidentally
 // tries to hit a network target.
+
+// Once installed from npm, this package itself lives under node_modules, which
+// Jest skips by default for both test discovery and transforms. Ignore only
+// node_modules paths that aren't this package.
+const ignoreOtherNodeModules = ['/node_modules/(?!@cognitiveproof/softbinding-api-conformance/)'];
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   rootDir: __dirname,
-  testMatch: ['**/*.conformance.test.ts'],
+  testMatch: ['<rootDir>/tests/**/*.conformance.test.ts'],
+  testPathIgnorePatterns: ignoreOtherNodeModules,
+  transformIgnorePatterns: ignoreOtherNodeModules,
+  haste: { retainAllFiles: true },
   setupFilesAfterEnv: ['<rootDir>/jest.conformance.setup.ts'],
   transform: {
     '^.+\\.ts$': [

@@ -1,16 +1,26 @@
 import { randomUUID } from 'crypto';
 import { api, authHeader } from './client';
 import { getConformanceEnv } from './env';
+import { signTestManifest } from './signing';
 
 const createdManifestIds: string[] = [];
 
 /**
- * Marker bytes embedded in every fixture manifest this harness creates, so
- * any data left behind by an interrupted or `--no-cleanup` run is easy to
- * identify and hand-delete on the target.
+ * Marker text used as the title of every fixture manifest this harness
+ * creates, so any data left behind by an interrupted or `--no-cleanup` run is
+ * easy to identify and hand-delete on the target.
  */
 export function markerPayload(): Buffer {
   return Buffer.from(`softbinding-conformance-fixture:${randomUUID()}`);
+}
+
+/**
+ * Signs a fresh fixture C2PA Manifest Store. Stores may validate uploads and
+ * may derive the manifest id from the manifest, so every fixture is a real,
+ * signed manifest with its own active manifest label.
+ */
+export async function createTestManifestBytes(): Promise<Buffer> {
+  return signTestManifest(markerPayload().toString());
 }
 
 export interface TestManifest {
@@ -19,11 +29,16 @@ export interface TestManifest {
   receipt?: Record<string, unknown>;
 }
 
-/** POSTs a small marker manifest and tracks it for cleanup. */
+/** Registers a manifest id for deletion by `cleanupAll()`. */
+export function trackForCleanup(manifestId: string): void {
+  createdManifestIds.push(manifestId);
+}
+
+/** POSTs a freshly signed fixture manifest and tracks it for cleanup. */
 export async function createTestManifest(
   options: { returnReceipt?: boolean } = {},
 ): Promise<TestManifest> {
-  const data = markerPayload();
+  const data = await createTestManifestBytes();
   const res = await api()
     .post(`/manifests${options.returnReceipt ? '?returnReceipt=true' : ''}`)
     .set(authHeader())
@@ -37,7 +52,7 @@ export async function createTestManifest(
   }
 
   const manifestId: string = res.body.manifestId;
-  createdManifestIds.push(manifestId);
+  trackForCleanup(manifestId);
   return { manifestId, data, receipt: res.body.receipt };
 }
 

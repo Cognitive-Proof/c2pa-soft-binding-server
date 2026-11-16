@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import path from 'path';
 import { spawn } from 'child_process';
-import { fetchCapabilities, fetchWellKnown } from './discovery';
+import { assumeAllCapabilities, fetchWellKnown, probeCapabilities } from './discovery';
 
 interface CliOptions {
   baseUrl?: string;
   token?: string;
   cleanup: boolean;
   json: boolean;
+  anonymousUploads: boolean;
 }
 
 function printUsage(): void {
@@ -25,13 +26,15 @@ Required:
 
 Options:
   --no-cleanup         Leave created fixture manifests in place (for debugging a failure)
+  --anonymous-uploads  The target accepts POST /manifests without a token; skip the
+                       checks that an upload without a valid token is rejected
   --json               Emit Jest's JSON reporter output instead of the default reporter
   --help               Show this message
 `);
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { cleanup: true, json: false };
+  const options: CliOptions = { cleanup: true, json: false, anonymousUploads: false };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -47,6 +50,9 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case '--json':
         options.json = true;
+        break;
+      case '--anonymous-uploads':
+        options.anonymousUploads = true;
         break;
       case '--help':
       case '-h':
@@ -79,13 +85,23 @@ async function main(): Promise<void> {
   );
 
   console.log(`Discovering capabilities at ${options.baseUrl}/services/capabilities ...`);
-  const capabilities = await fetchCapabilities(options.baseUrl);
+  const discovered = await probeCapabilities(options.baseUrl);
+  const capabilities = discovered ?? assumeAllCapabilities();
   const wellKnown = await fetchWellKnown(options.baseUrl);
-  console.log(
-    `Supported capabilities: ${capabilities.supportedCapabilities.join(', ') || '(none reported)'}`,
-  );
-  if (!wellKnown) {
-    console.log('(No well-known discovery document found — that suite will report it as missing.)');
+  if (discovered) {
+    console.log(
+      `Supported capabilities: ${capabilities.supportedCapabilities.join(', ') || '(none reported)'}`,
+    );
+    if (!wellKnown) {
+      console.log(
+        '(No well-known discovery document found — that suite will report it as missing.)',
+      );
+    }
+  } else {
+    console.log(
+      'No /services/capabilities endpoint: treating the target as a published-2.4 server.\n' +
+        'Skipping the discovery checks added after 2.4 and assuming every optional capability.',
+    );
   }
 
   const jestBin = require.resolve('jest/bin/jest');
@@ -100,6 +116,8 @@ async function main(): Promise<void> {
       CONFORMANCE_TOKEN: options.token,
       CONFORMANCE_CLEANUP: String(options.cleanup),
       CONFORMANCE_CAPABILITIES: JSON.stringify(capabilities),
+      CONFORMANCE_DISCOVERY: String(Boolean(discovered)),
+      CONFORMANCE_ANONYMOUS_UPLOADS: String(options.anonymousUploads),
     },
   });
 

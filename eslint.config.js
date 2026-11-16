@@ -30,5 +30,13 @@ module.exports = tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    // Plain ES module scripts run directly by Node (conformance/sign-manifest.mjs)
+    files: ['**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: globals.node,
+    },
+  },
   eslintConfigPrettier,
 );

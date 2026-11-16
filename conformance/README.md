@@ -4,7 +4,9 @@ A black-box conformance test harness for the [C2PA Soft Binding Resolution API](
 
 ## ⚠ This creates and deletes real data
 
-Each run stores a handful of test manifests and bindings on the target, then deletes them again. **Point this at a sandbox or staging deployment, never production**, unless you're certain the credentials you're using are scoped to a throwaway tenant. Every fixture manifest is tagged with a `softbinding-conformance-fixture:<uuid>` marker in its bytes so any leftovers (e.g. from an interrupted run) are easy to identify.
+Each run stores a handful of test manifests and bindings on the target, then deletes them again. **Point this at a sandbox or staging deployment, never production**, unless you're certain the credentials you're using are scoped to a throwaway tenant. Every fixture is a real C2PA Manifest Store, freshly signed for each upload, titled `softbinding-conformance-fixture:<uuid>` so any leftovers (e.g. from an interrupted run) are easy to identify.
+
+Fixtures are signed with the c2pa-rs "FOR TESTING ONLY" sample ES256 certificate. A target that checks manifest structure and signatures should accept them; one that only accepts signers on a trust list will reject them, and the store suites will fail at fixture setup.
 
 ## Usage
 
@@ -18,22 +20,26 @@ The token needs `fetch:manifests`, `store:manifests`, and `store:bindings` scope
 
 ### Options
 
-| Flag               | Description                                                        |
-| ------------------ | ------------------------------------------------------------------ |
-| `--base-url <url>` | **Required.** Base URL of the target's `/v1` API.                  |
-| `--token <bearer>` | **Required.** Bearer token to authenticate with.                   |
-| `--no-cleanup`     | Leave created fixture manifests in place, for debugging a failure. |
-| `--json`           | Emit Jest's JSON reporter output instead of the default.           |
+| Flag                  | Description                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `--base-url <url>`    | **Required.** Base URL of the target's `/v1` API.                                                      |
+| `--token <bearer>`    | **Required.** Bearer token to authenticate with.                                                       |
+| `--no-cleanup`        | Leave created fixture manifests in place, for debugging a failure.                                     |
+| `--anonymous-uploads` | The target accepts `POST /manifests` without a token. Skips the checks that such uploads are rejected. |
+| `--json`              | Emit Jest's JSON reporter output instead of the default.                                               |
 
 Exit code is non-zero if any check fails — safe to wire into CI.
 
 ## What it checks
 
-Per the spec, only one query endpoint plus `GET /manifests/{id}` are mandatory — everything else is optional. The harness calls `GET /services/capabilities` up front and skips suites for capabilities the target doesn't report, rather than failing them:
+Per the spec, only one query endpoint plus `GET /manifests/{id}` are mandatory — everything else is optional. The harness calls `GET /services/capabilities` up front and skips suites for capabilities the target doesn't report, rather than failing them.
 
-- **Discovery** — `/services/capabilities`, `/services/status`, `/services/supportedAlgorithms`, and the root-level `/.well-known/c2pa-soft-binding-resolution` respond with the documented shapes.
-- **Manifests** — unknown manifest IDs 404; when `storeManifests` is supported, store → fetch → delete round-trips correctly and a deleted manifest 404s afterward.
-- **Auth** — store endpoints reject missing/garbage bearer tokens with `401`. `GET /manifests/{id}` is checked leniently (`200`/`401`/`403`/`404` all pass), since the spec allows per-manifest public/private policy.
+`/services/capabilities`, `/services/status` and `/.well-known/c2pa-soft-binding-resolution` were added to the spec after the [published 2.4 version](https://spec.c2pa.org/specifications/specifications/2.4/softbinding/Decoupled.html). If the target has no `/services/capabilities`, the harness treats it as a 2.4 server: it skips the checks for those three endpoints and assumes every optional capability is present.
+
+- **Discovery** — `/services/supportedAlgorithms` responds with the documented shape; on targets that serve them, so do `/services/capabilities`, `/services/status` and the root-level `/.well-known/c2pa-soft-binding-resolution`.
+
+- **Manifests** — unknown manifest IDs 404; when `storeManifests` is supported, store → fetch → delete round-trips correctly and a deleted manifest answers `404` (what the spec documents) or `410 Gone` afterward.
+- **Auth** — `POST /manifests` rejects a missing or garbage bearer token, and `DELETE /manifests/{id}` without a token is rejected and leaves the manifest in place. The spec documents `403` for this and no `401`, so either passes. Use `--anonymous-uploads` for a target that accepts uploads without a token. `GET /manifests/{id}` is checked leniently (`200`/`401`/`403`/`404` all pass), since the spec allows per-manifest public/private policy.
 - **Bindings** — when `storeBindings` is supported, a binding can be created, found via `GET /matches/byBinding`, and updated; binding to an unknown manifest 404s.
 - **Receipts** — when `storeManifests` is supported, `returnReceipt=true` produces a receipt that's retrievable and verifies successfully.
 

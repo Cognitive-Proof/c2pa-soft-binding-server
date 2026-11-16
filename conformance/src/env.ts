@@ -7,6 +7,8 @@ export interface ConformanceEnv {
   baseUrl: string;
   token: string;
   cleanup: boolean;
+  /** The target accepts uploads without a token (`--anonymous-uploads`). */
+  anonymousUploads: boolean;
 }
 
 let cached: ConformanceEnv | undefined;
@@ -29,6 +31,7 @@ export function getConformanceEnv(): ConformanceEnv {
     baseUrl: baseUrl.replace(/\/$/, ''),
     token,
     cleanup: process.env.CONFORMANCE_CLEANUP !== 'false',
+    anonymousUploads: process.env.CONFORMANCE_ANONYMOUS_UPLOADS === 'true',
   };
   return cached;
 }

@@ -1,32 +1,61 @@
-import { api } from '../src/client';
+import { api, authHeader } from '../src/client';
 import { hasCapability } from '../src/discovery';
+import { getConformanceEnv } from '../src/env';
+import { createTestManifest, createTestManifestBytes, trackForCleanup } from '../src/fixtures';
+
+// The spec documents 403 ("Client not allowed to perform this operation") and
+// no 401, but 401 is the usual HTTP answer to a missing or invalid bearer
+// token, so either passes.
+const REJECTED = [401, 403];
 
 const describeIfWritable = hasCapability('storeManifests') ? describe : describe.skip;
+const describeIfUploadsNeedAuth =
+  hasCapability('storeManifests') && !getConformanceEnv().anonymousUploads
+    ? describe
+    : describe.skip;
 
-describeIfWritable('auth enforcement on store endpoints', () => {
-  it('POST /manifests without a token is rejected (401)', async () => {
-    const res = await api()
-      .post('/manifests')
-      .set('Content-Type', 'application/c2pa')
-      .send(Buffer.from('conformance-no-auth'));
+/**
+ * POSTs a valid signed manifest without (or with a bad) token. A valid body
+ * means a store that validates uploads can only reject it for auth, and if
+ * the store accepts it anyway the manifest still gets cleaned up.
+ */
+async function postManifest(headers: Record<string, string>) {
+  const res = await api()
+    .post('/manifests')
+    .set(headers)
+    .set('Content-Type', 'application/c2pa')
+    .send(await createTestManifestBytes());
 
-    expect(res.status).toBe(401);
+  if (res.status === 200 && typeof res.body?.manifestId === 'string') {
+    trackForCleanup(res.body.manifestId);
+  }
+  return res;
+}
+
+describeIfUploadsNeedAuth('auth enforcement on POST /manifests', () => {
+  it('POST /manifests without a token is rejected (401 or 403)', async () => {
+    const res = await postManifest({});
+
+    expect(REJECTED).toContain(res.status);
   });
 
-  it('POST /manifests with a garbage bearer token is rejected (401)', async () => {
-    const res = await api()
-      .post('/manifests')
-      .set('Authorization', 'Bearer not-a-real-token')
-      .set('Content-Type', 'application/c2pa')
-      .send(Buffer.from('conformance-bad-token'));
+  it('POST /manifests with a garbage bearer token is rejected (401 or 403)', async () => {
+    const res = await postManifest({ Authorization: 'Bearer not-a-real-token' });
 
-    expect(res.status).toBe(401);
+    expect(REJECTED).toContain(res.status);
   });
+});
 
-  it('DELETE /manifests/:id without a token is rejected (401)', async () => {
-    const res = await api().delete('/manifests/urn:c2pa:conformance-auth-check');
+describeIfWritable('auth enforcement on DELETE /manifests/:id', () => {
+  it('DELETE without a token is rejected (401 or 403) and leaves the manifest in place', async () => {
+    const { manifestId } = await createTestManifest();
+    const path = `/manifests/${encodeURIComponent(manifestId)}`;
 
-    expect(res.status).toBe(401);
+    const del = await api().delete(path);
+    expect(REJECTED).toContain(del.status);
+
+    const get = await api().get(path).set(authHeader());
+    expect(get.status).toBe(200);
   });
 });
 

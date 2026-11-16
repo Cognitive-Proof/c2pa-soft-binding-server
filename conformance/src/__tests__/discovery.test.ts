@@ -1,4 +1,5 @@
 import {
+  probeCapabilities,
   fetchCapabilities,
   fetchWellKnown,
   getCachedCapabilities,
@@ -42,6 +43,20 @@ describe('fetchCapabilities', () => {
         'storeBindings',
       ]),
     );
+  });
+});
+
+describe('probeCapabilities', () => {
+  let server: StubServer;
+
+  afterEach(async () => {
+    await server?.close();
+  });
+
+  it('returns undefined when the endpoint is missing, as on a 2.4 target', async () => {
+    server = await startStubServer(() => ({ status: 404 }));
+
+    await expect(probeCapabilities(server.baseUrl)).resolves.toBeUndefined();
   });
 });
 
