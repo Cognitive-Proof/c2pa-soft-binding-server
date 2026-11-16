@@ -135,7 +135,9 @@ c2pa-soft-binding-server/
 │   ├── google-service-account-auth/ # @cognitiveproof/softbinding-api-plugin-google-service-account-auth — AuthPlugin (opt-in)
 │   ├── pino-logger/           # @cognitiveproof/softbinding-api-plugin-pino-logger — LoggerPlugin
 │   ├── redis-rate-limit/      # @cognitiveproof/softbinding-api-plugin-redis-rate-limit — RateLimitStorePlugin
-│   └── vsmark/                # @cognitiveproof/softbinding-api-plugin-vsmark — Extractor (text watermark)
+│   ├── vsmark/                # @cognitiveproof/softbinding-api-plugin-vsmark — Extractor (text watermark)
+│   ├── c2pa-manifest/         # @cognitiveproof/softbinding-api-plugin-c2pa-manifest — ManifestReader (c2pa-rs validation)
+│   └── iscc/                  # @cognitiveproof/softbinding-api-plugin-iscc — MatcherPlugin + Extractor (ISCC, io.iscc.v0)
 └── conformance/              # @cognitiveproof/softbinding-api-conformance — black-box spec-conformance test harness (see below)
 ```
 
@@ -260,7 +262,8 @@ Run this project standalone (e.g. as a cloned repo) when you want a ready-to-go 
 
 ### Prerequisites
 
-- Node.js 18 or later
+- Node.js 18 or later to run the server; 22.12 or later if you use `@cognitiveproof/softbinding-api-plugin-c2pa-manifest`
+- Node.js 24.9 or later to run this repo's test suite (Jest can only load the ESM-only `@contentauth/c2pa-node` on 24.9+; CI uses Node 24)
 - npm
 
 ### Installation
@@ -529,6 +532,14 @@ createServer({
   dataStore: '@cognitiveproof/softbinding-api-plugin-postgres', // or pass the imported plugin directly
 });
 ```
+
+To validate uploads with c2pa-rs and match ISCC soft bindings by similarity (see [Similarity Matching with `matchers`](#similarity-matching-with-matchers)):
+
+```bash
+npm install @cognitiveproof/softbinding-api-server @cognitiveproof/softbinding-api-plugin-c2pa-manifest @cognitiveproof/softbinding-api-plugin-iscc
+```
+
+These two are passed to `createServer()` as objects (`readManifest`, `matchers`, `extractors`) rather than loaded by package name.
 
 If `loadDataStore`/`loadObjectStore`/the logger plugin loader/the rate limit store plugin loader can't find the requested plugin package, `createServer()` throws an error telling you which package to `npm install`. The pino logger and Redis rate-limit plugins are required only when selected explicitly. The server has built-in console logging and in-memory rate limiting.
 
