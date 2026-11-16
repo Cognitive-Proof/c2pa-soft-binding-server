@@ -26,6 +26,10 @@ export type {
   ManifestEntry,
   Receipt,
   LoadedData,
+  ManifestInfo,
+  ManifestReader,
+  MatcherPlugin,
+  SoftBindingBlock,
 } from '@cognitiveproof/softbinding-api-plugin-types';
 export type { Extractor, SupportedAlgorithms, SoftBindingRegistry } from './softBinding';
 export type { AuthPlugin } from '@cognitiveproof/softbinding-api-plugin-types';
@@ -62,7 +66,11 @@ interface BodyParserError extends Error {
 export function createServer(options: SoftBindingServerOptions = {}): Express {
   const config = resolveConfig(options);
   const dataStore = loadDataStore(options.dataStore);
-  const softBinding = createSoftBindingRegistry(options.extractors);
+  const matchers = options.matchers ?? {};
+  const softBinding = createSoftBindingRegistry(
+    options.extractors,
+    Object.fromEntries(Object.entries(matchers).map(([alg, matcher]) => [alg, matcher.kind])),
+  );
   const logger = resolveLogger(options.logger);
   const auth = resolveAuthMiddleware(options.auth, logger);
   const optionalAuth = resolveOptionalAuthMiddleware(options.auth);
@@ -73,7 +81,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       : (options.originalsStore ?? options.objectStore ?? process.env.OBJECTSTORE_PLUGIN);
   const originalsStore = originalsStorePlugin ? loadObjectStore(originalsStorePlugin) : undefined;
 
-  if (!options.parseManifestId) {
+  if (!options.parseManifestId && !options.readManifest) {
     logger.warn(
       'parseManifestId is not configured — POST /manifests will assign each manifest a ' +
         'randomly generated id instead of the id embedded in the manifest itself. This does ' +
@@ -137,6 +145,7 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       maxUploadSize: config.maxUploadSize,
       maxReferenceSize: config.maxReferenceSize,
       maxQueryValueLength: config.maxQueryValueLength,
+      matchers,
     }),
   );
   app.use(
@@ -147,6 +156,9 @@ export function createServer(options: SoftBindingServerOptions = {}): Express {
       repoUri: config.repoUri,
       receiptSecret: config.receiptSecret,
       parseManifestId: options.parseManifestId,
+      readManifest: options.readManifest,
+      matchers,
+      logger,
     }),
   );
   app.use(

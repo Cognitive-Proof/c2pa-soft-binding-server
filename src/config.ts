@@ -6,6 +6,8 @@ import type {
   DataStorePlugin,
   ObjectStorePlugin,
   Logger,
+  ManifestReader,
+  MatcherPlugin,
 } from '@cognitiveproof/softbinding-api-plugin-types';
 import type { Extractor } from './softBinding';
 import type { AuthRequiredCheck, JwtAuthOptions } from './auth';
@@ -123,6 +125,25 @@ export interface SoftBindingServerOptions {
    * manifestId argument.
    */
   parseManifestId?: (data: Buffer) => string | Promise<string>;
+  /**
+   * Reads (and may validate) each manifest uploaded to `POST /manifests`,
+   * returning its manifestId and soft-binding blocks — e.g.
+   * `createC2paManifestReader()` from
+   * `@cognitiveproof/softbinding-api-plugin-c2pa-manifest`. Throwing refuses
+   * the upload with a 400. Supersedes `parseManifestId` (same id and
+   * duplicate rules) and, for algorithms with a `matchers` entry, indexes the
+   * manifest's soft bindings automatically. Bindings for other algorithms
+   * still go through `POST /bindings`.
+   */
+  readManifest?: ManifestReader;
+  /**
+   * Per-algorithm query backends, keyed by algorithm name — e.g.
+   * `{ 'io.iscc.v0': isccMatcher(...) }` from
+   * `@cognitiveproof/softbinding-api-plugin-iscc`. Queries whose `alg` (or
+   * `hintAlg`) has a matcher are answered by it instead of the data store's
+   * exact lookup, and its algorithm is listed by `supportedAlgorithms`.
+   */
+  matchers?: Record<string, MatcherPlugin>;
   /** Soft binding watermark/fingerprint extractors, keyed by algorithm name. */
   extractors?: Record<string, Extractor>;
   /** Mount /docs and /v1/openapi.json. Default: true. */

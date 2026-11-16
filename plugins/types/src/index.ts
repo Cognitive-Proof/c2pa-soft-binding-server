@@ -180,3 +180,65 @@ export type Extractor = (
   mimeType: string,
   region?: RegionOfInterest[],
 ) => Promise<string | null>;
+
+/**
+ * One block of a `c2pa.soft-binding` assertion read from a stored manifest:
+ * the algorithm, the block's value as base64 (how c2pa-rs reports the
+ * spec's byte string), and the block's scope, if it has one.
+ */
+export interface SoftBindingBlock {
+  alg: string;
+  value: string;
+  scope?: unknown;
+}
+
+/** What a ManifestReader reports about an uploaded C2PA Manifest Store. */
+export interface ManifestInfo {
+  /** The active manifest's own label, used as the stored manifestId. */
+  manifestId: string;
+  /** Every soft-binding block of the active manifest. */
+  bindings: SoftBindingBlock[];
+  /** Whether the signing credential chains to a configured trust anchor, if checked. */
+  trusted?: boolean;
+}
+
+/**
+ * Reads (and may validate) an uploaded C2PA Manifest Store for
+ * `POST /manifests`. Throw (or reject) to refuse the upload with a 400; the
+ * error message is returned to the caller. Registered with
+ * `createServer({ readManifest })`.
+ */
+export type ManifestReader = (data: Buffer) => ManifestInfo | Promise<ManifestInfo>;
+
+/**
+ * A MatcherPlugin answers soft-binding queries for one algorithm with its
+ * own index, instead of the data store's exact-value lookup — e.g. a
+ * fingerprint compared by similarity. Registered with
+ * `createServer({ matchers })`, keyed by an algorithm name from the C2PA soft
+ * binding algorithm list. Values are base64, as in `SoftBindingBlock`.
+ *
+ * With a `readManifest` configured, every stored manifest's soft-binding
+ * blocks for this algorithm are passed to `index`; `remove` is called when a
+ * manifest is deleted (for every matcher, whether it indexed that manifest or
+ * not).
+ */
+export interface MatcherPlugin {
+  /** Reported by `GET /services/supportedAlgorithms`. */
+  kind: 'fingerprint' | 'watermark';
+  /** Throw InvalidSoftBindingValueError to refuse the value (the upload gets a 400). */
+  index(manifestId: string, value: string, scope?: unknown): Promise<void>;
+  remove(manifestId: string): Promise<void>;
+  /** Best matches first. Throw InvalidSoftBindingValueError for a value the algorithm can't read (400). */
+  match(value: string, maxResults: number): Promise<Match[]>;
+}
+
+/**
+ * Thrown by a MatcherPlugin for a value its algorithm can't read. The server
+ * recognises it by `name`, so it works across package copies.
+ */
+export class InvalidSoftBindingValueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidSoftBindingValueError';
+  }
+}

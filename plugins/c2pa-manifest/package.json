@@ -1,0 +1,35 @@
+{
+  "name": "@cognitiveproof/softbinding-api-plugin-c2pa-manifest",
+  "version": "1.0.0",
+  "description": "C2PA Manifest Store reader for the C2PA Soft Binding Resolution API server: validates uploads with c2pa-rs and reports their manifest id and soft bindings",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cognitive-Proof/c2pa-soft-binding-server.git",
+    "directory": "plugins/c2pa-manifest"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.2.0",
+    "@contentauth/c2pa-node": "^0.12.0",
+    "@contentauth/c2pa-utilities": "^0.5.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.3.3"
+  }
+}

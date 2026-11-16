@@ -1,7 +1,19 @@
 import express, { Request, RequestHandler, Response, Router } from 'express';
-import type { DataStorePlugin, Receipt } from '@cognitiveproof/softbinding-api-plugin-types';
+import type {
+  DataStorePlugin,
+  Logger,
+  ManifestInfo,
+  ManifestReader,
+  Receipt,
+} from '@cognitiveproof/softbinding-api-plugin-types';
 import { requireAuthScope } from '../auth';
 import { buildReceipt } from '../receipts';
+import {
+  indexManifestBindings,
+  isInvalidSoftBindingValue,
+  removeFromMatchers,
+  type Matchers,
+} from '../matching';
 
 export interface StoreRouterDeps {
   dataStore: DataStorePlugin;
@@ -9,10 +21,16 @@ export interface StoreRouterDeps {
   repoUri: string;
   receiptSecret: string;
   parseManifestId?: (data: Buffer) => string | Promise<string>;
+  /** See SoftBindingServerOptions.readManifest. Takes precedence over parseManifestId. */
+  readManifest?: ManifestReader;
+  /** See SoftBindingServerOptions.matchers. */
+  matchers?: Matchers;
+  logger?: Logger;
 }
 
 export function createStoreRouter(deps: StoreRouterDeps): Router {
-  const { dataStore, auth, repoUri, receiptSecret, parseManifestId } = deps;
+  const { dataStore, auth, repoUri, receiptSecret, parseManifestId, readManifest, logger } = deps;
+  const matchers = deps.matchers ?? {};
   const router = express.Router();
   const requireManifestScope = requireAuthScope('store:manifests');
   const requireBindingScope = requireAuthScope('store:bindings');
@@ -37,8 +55,18 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
 
       const data = req.body as Buffer;
       let parsedId: string | undefined;
+      let info: ManifestInfo | undefined;
 
-      if (parseManifestId) {
+      if (readManifest) {
+        try {
+          info = await readManifest(data);
+          parsedId = info.manifestId;
+        } catch (err) {
+          return res.status(400).json({
+            error: `Invalid C2PA Manifest Store: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      } else if (parseManifestId) {
         try {
           parsedId = await parseManifestId(data);
         } catch (err) {
@@ -68,6 +96,18 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
             manifestId = parsedId;
           } else {
             manifestId = await dataStore.addManifest(data, 'application/c2pa', parsedId);
+            if (info) {
+              try {
+                await indexManifestBindings(matchers, manifestId, info.bindings);
+              } catch (err) {
+                // Don't keep a manifest its soft bindings can't find.
+                await dataStore.deleteManifest(manifestId).catch(() => undefined);
+                if (isInvalidSoftBindingValue(err)) {
+                  return res.status(400).json({ error: `Invalid soft binding: ${err.message}` });
+                }
+                throw err;
+              }
+            }
           }
         } else {
           manifestId = await dataStore.addManifest(data, 'application/c2pa');
@@ -137,6 +177,7 @@ export function createStoreRouter(deps: StoreRouterDeps): Router {
         if (!ok) {
           return res.status(404).json({ error: 'C2PA Manifest Store not found' });
         }
+        await removeFromMatchers(matchers, req.params.manifestId, logger);
         return res.status(204).send();
       } catch {
         return res.status(500).json({ error: 'Service failure' });
