@@ -1,0 +1,31 @@
+{
+  "name": "@cognitiveproof/softbinding-api-plugin-iscc",
+  "version": "1.0.0",
+  "description": "ISCC (ISO 24138) io.iscc.v0 soft bindings for the C2PA Soft Binding Resolution API server: similarity matcher and extractor (IEP-0020)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cognitive-Proof/c2pa-soft-binding-server.git",
+    "directory": "plugins/iscc"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.2.0",
+    "@iscc/lib": "^0.7.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.3.3"
+  }
+}

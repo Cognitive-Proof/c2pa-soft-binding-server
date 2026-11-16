@@ -5,6 +5,7 @@ import { AuthRequiredCheck, createReadAuthGate, requireAuthScope } from '../auth
 import type { MatchQuery } from '../config';
 import { validateReferenceUrl } from '../utils/ssrf';
 import { parseRegionOfInterest } from '../utils/regionOfInterest';
+import { findMatches, isInvalidSoftBindingValue, type Matchers } from '../matching';
 
 const ASSET_MIME_RE = /^(image|audio|video|application|model|text)\//;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -86,11 +87,14 @@ export interface QueryRouterDeps {
   maxUploadSize: number;
   maxReferenceSize: number;
   maxQueryValueLength: number;
+  /** See SoftBindingServerOptions.matchers. */
+  matchers?: Matchers;
 }
 
 export function createQueryRouter(deps: QueryRouterDeps): Router {
   const { dataStore, softBinding, auth, optionalAuth, isMatchAuthRequired } = deps;
   const { maxUploadSize, maxReferenceSize, maxQueryValueLength } = deps;
+  const matchers = deps.matchers ?? {};
   const router = express.Router();
   const requireFetchScope = requireAuthScope('fetch:manifests');
 
@@ -135,8 +139,11 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
       }
 
       try {
-        return res.json({ matches: await dataStore.findByBinding(value, maxResults) });
-      } catch {
+        return res.json({
+          matches: await findMatches(dataStore, matchers, alg, value, maxResults),
+        });
+      } catch (err) {
+        if (isInvalidSoftBindingValue(err)) return res.status(400).json({ error: err.message });
         return res.status(500).json({ error: 'Service failure' });
       }
     },
@@ -158,8 +165,11 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
       }
 
       try {
-        return res.json({ matches: await dataStore.findByBinding(value, maxResults) });
-      } catch {
+        return res.json({
+          matches: await findMatches(dataStore, matchers, alg, value, maxResults),
+        });
+      } catch (err) {
+        if (isInvalidSoftBindingValue(err)) return res.status(400).json({ error: err.message });
         return res.status(500).json({ error: 'Service failure' });
       }
     },
@@ -189,19 +199,24 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
 
       try {
         let bindingValue: string | null = null;
+        let bindingAlg = alg;
         if (alg) {
           bindingValue = await softBinding.extractSoftBinding(req.body as Buffer, contentType, alg);
         }
         // Fall back to caller-supplied hint if extraction returns nothing
         if (!bindingValue && hintAlg && hintValue) {
           bindingValue = hintValue;
+          bindingAlg = hintAlg;
         }
 
         if (!bindingValue) {
           return res.json({ matches: [] });
         }
-        return res.json({ matches: await dataStore.findByBinding(bindingValue, maxResults) });
-      } catch {
+        return res.json({
+          matches: await findMatches(dataStore, matchers, bindingAlg, bindingValue, maxResults),
+        });
+      } catch (err) {
+        if (isInvalidSoftBindingValue(err)) return res.status(400).json({ error: err.message });
         return res.status(500).json({ error: 'Service failure' });
       }
     },
@@ -278,6 +293,7 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
           const effectiveType = assetType ?? downloadedType ?? 'application/octet-stream';
 
           let bindingValue: string | null = null;
+          let bindingAlg = alg;
           if (alg) {
             bindingValue = await softBinding.extractSoftBinding(
               buffer,
@@ -288,16 +304,20 @@ export function createQueryRouter(deps: QueryRouterDeps): Router {
           }
           if (!bindingValue && hintAlg && hintValue) {
             bindingValue = hintValue;
+            bindingAlg = hintAlg;
           }
 
           if (!bindingValue) {
             return res.json({ matches: [] });
           }
-          return res.json({ matches: await dataStore.findByBinding(bindingValue, maxResults) });
+          return res.json({
+            matches: await findMatches(dataStore, matchers, bindingAlg, bindingValue, maxResults),
+          });
         } finally {
           clearTimeout(timeout);
         }
       } catch (err) {
+        if (isInvalidSoftBindingValue(err)) return res.status(400).json({ error: err.message });
         if (err instanceof ReferenceSizeError) {
           return res.status(400).json({ error: err.message });
         }

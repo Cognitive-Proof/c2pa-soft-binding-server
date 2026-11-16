@@ -36,8 +36,15 @@ export interface SoftBindingRegistry {
   getSupportedAlgorithms(): SupportedAlgorithms;
 }
 
+/**
+ * `kinds` lists algorithms answered by a MatcherPlugin (see
+ * createServer's `matchers`) with the kind each declares. They're reported
+ * by getSupportedAlgorithms() whether or not they also have an extractor, and
+ * their declared kind wins over the name-based guess used for extractors.
+ */
 export function createSoftBindingRegistry(
   extractors: Record<string, Extractor> = {},
+  kinds: Record<string, 'fingerprint' | 'watermark'> = {},
 ): SoftBindingRegistry {
   const supportedWatermarks: string[] = [];
   const supportedFingerprints: string[] = [];
@@ -45,11 +52,12 @@ export function createSoftBindingRegistry(
 
   function registerExtractor(alg: string, fn: Extractor): void {
     registry.set(alg, fn);
-    if (alg.includes('watermark') && !supportedWatermarks.includes(alg)) {
-      supportedWatermarks.push(alg);
-    } else if (!supportedFingerprints.includes(alg)) {
-      supportedFingerprints.push(alg);
-    }
+    addSupported(alg, kinds[alg] ?? (alg.includes('watermark') ? 'watermark' : 'fingerprint'));
+  }
+
+  function addSupported(alg: string, kind: 'fingerprint' | 'watermark'): void {
+    const list = kind === 'watermark' ? supportedWatermarks : supportedFingerprints;
+    if (!supportedWatermarks.includes(alg) && !supportedFingerprints.includes(alg)) list.push(alg);
   }
 
   async function extractSoftBinding(
@@ -72,6 +80,9 @@ export function createSoftBindingRegistry(
 
   for (const [alg, fn] of Object.entries(extractors)) {
     registerExtractor(alg, fn);
+  }
+  for (const [alg, kind] of Object.entries(kinds)) {
+    addSupported(alg, kind);
   }
 
   return { registerExtractor, extractSoftBinding, getSupportedAlgorithms };

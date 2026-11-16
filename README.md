@@ -115,6 +115,7 @@ c2pa-soft-binding-server/
 │   ├── logger.ts                # resolveLogger() — pluggable structured logging, defaults to a console JSON logger
 │   ├── rateLimit.ts              # resolveRateLimitStore() — pluggable rate limit store, defaults to in-memory
 │   ├── softBinding.ts          # createSoftBindingRegistry(extractors) — soft binding extractor registry
+│   ├── matching.ts             # routes queries and index updates to MatcherPlugins or the data store
 │   ├── utils/
 │   │   └── ssrf.ts            # SSRF protection for the byReference endpoint
 │   └── routes/
@@ -362,6 +363,8 @@ c2paApp.listen(3000);
 | `isAuthRequired`                                     | `{ manifests?, originals?, matches?, receipts? }` — per-group checks that open read routes to anonymous callers (see below)        |
 | `extractors`                                         | `Record<string, Extractor>`                                                                                                        |
 | `parseManifestId`                                    | `(data: Buffer) => string \| Promise<string>` — derives `manifestId` from the uploaded manifest itself (see below)                 |
+| `readManifest`                                       | `ManifestReader` — validates uploads and reports their id and soft bindings; supersedes `parseManifestId` (see below)              |
+| `matchers`                                           | `Record<string, MatcherPlugin>` — per-algorithm query backends, e.g. ISCC similarity (see below)                                   |
 | `docs`                                               | `boolean` (default `true`) — mounts `/docs` and `/v1/openapi.json`                                                                 |
 | `logger`                                             | `Logger \| string` — overrides the default console JSON logger (see below)                                                         |
 | `helmet`                                             | `HelmetOptions \| false` — customizes or disables `helmet()` security headers (default: enabled with helmet's defaults)            |
@@ -504,6 +507,8 @@ Persistence, authentication, logging, and rate limit storage are implemented ent
 | `@cognitiveproof/softbinding-api-plugin-pino-logger`                 | `LoggerPlugin`                          | [pino](https://getpino.io/)                        | optional `LOG_LEVEL` (default `info`)                                                                                  |
 | `@cognitiveproof/softbinding-api-plugin-redis-rate-limit`            | `RateLimitStorePlugin`                  | Redis (via `rate-limit-redis`/`ioredis`)           | optional `REDIS_URL` (default `redis://localhost:6379`)                                                                |
 | `@cognitiveproof/softbinding-api-plugin-vsmark`                      | `Extractor`                             | Unicode variation-selector text watermark          | none                                                                                                                   |
+| `@cognitiveproof/softbinding-api-plugin-c2pa-manifest`               | `ManifestReader`                        | c2pa-rs (via `@contentauth/c2pa-node`)             | none — pass trust anchors to `createC2paManifestReader()`                                                              |
+| `@cognitiveproof/softbinding-api-plugin-iscc`                        | `MatcherPlugin`, `Extractor`            | ISCC (ISO 24138), `io.iscc.v0` per IEP-0020        | none — pass a unit store to `isccMatcher()` (in-memory or MongoDB)                                                     |
 
 The SQL plugins (`postgres`, `mysql`, `sqlite`) all use the same `manifests` / `bindings` schema with a foreign key from `bindings.manifest_id` to `manifests.id` (`ON DELETE CASCADE`), and create their tables automatically on first use.
 
@@ -645,6 +650,52 @@ Implementing a custom `DataStorePlugin`? Its `addManifest(data, contentType, man
 ```bash
 npm run test:integration
 ```
+
+### Validating uploads and reading their soft bindings
+
+`readManifest` goes further than `parseManifestId`: it may validate the upload, and it reports the manifest's soft-binding blocks as well as its id. The same id, idempotency and conflict rules apply, and a reader that throws refuses the upload with `400`. `@cognitiveproof/softbinding-api-plugin-c2pa-manifest` provides one built on c2pa-rs:
+
+```ts
+import { createC2paManifestReader } from '@cognitiveproof/softbinding-api-plugin-c2pa-manifest';
+
+createServer({
+  readManifest: createC2paManifestReader({
+    trustAnchors: fs.readFileSync('C2PA-TRUST-LIST.pem', 'utf8'), // optional
+  }),
+});
+```
+
+It accepts a Manifest Store whose active manifest has a verified claim signature. Hard-binding failures are expected (the asset isn't uploaded) and tolerated; a credential outside the trust anchors, or expired, is accepted as untrusted unless `requireTrusted` (or `allowExpired: false`) says otherwise. Any other validation failure refuses the upload, so a soft binding changed after signing never gets stored, and so do bytes after the Manifest Store and ingredient manifests changed after signing. It reads offline: no remote manifests, OCSP or CAWG identity lookups, which would otherwise fetch URLs the uploader chose. See [its README](plugins/c2pa-manifest/README.md).
+
+---
+
+## Similarity Matching with `matchers`
+
+By default every query is an exact lookup of the binding value in the data store. A `MatcherPlugin` registered for an algorithm answers that algorithm's queries instead (`byBinding`, and `byContent`/`byReference` after extraction or with a `hintAlg`), with its own index and scores, and the algorithm is listed by `supportedAlgorithms`. With a `readManifest` configured, each stored manifest's soft-binding blocks for that algorithm are indexed automatically, and removed when the manifest is deleted. Bindings for algorithms without a matcher still go through `POST /bindings`.
+
+`@cognitiveproof/softbinding-api-plugin-iscc` matches `io.iscc.v0` (ISCC) soft bindings as specified by [IEP-0020](https://ieps.iscc.codes/iep-0020/): an equal Instance-Code scores 100, otherwise the best Semantic-, Content- or Data-Code similarity (capped at 99) at or above 80. Its extractor generates an ISCC from an asset for `byContent`.
+
+```ts
+import { createC2paManifestReader } from '@cognitiveproof/softbinding-api-plugin-c2pa-manifest';
+import {
+  createMongoUnitStore,
+  isccExtractor,
+  isccMatcher,
+  ISCC_ALGORITHM,
+} from '@cognitiveproof/softbinding-api-plugin-iscc';
+
+createServer({
+  readManifest: createC2paManifestReader(),
+  matchers: {
+    [ISCC_ALGORITHM]: isccMatcher({ store: createMongoUnitStore(db.collection('isccUnits')) }),
+  },
+  extractors: { [ISCC_ALGORITHM]: isccExtractor },
+});
+```
+
+To write your own, implement `MatcherPlugin` (`kind`, `index`, `remove`, `match`) from `@cognitiveproof/softbinding-api-plugin-types`, and throw an error named `InvalidSoftBindingValueError` for a value your algorithm can't read (the server answers `400`).
+
+**Integration test**: [`src/__tests__/integration/isccMatching.test.ts`](src/__tests__/integration/isccMatching.test.ts) uploads a signed sidecar through the real c2pa-rs reader and finds it by exact and similar ISCC (`npm run test:integration`, after `npm run build`).
 
 ---
 
