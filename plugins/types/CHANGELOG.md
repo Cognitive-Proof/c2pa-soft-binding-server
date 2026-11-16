@@ -1,5 +1,11 @@
 # @cognitiveproof/softbinding-api-plugin-types
 
+## 1.3.0
+
+### Minor Changes
+
+- [#26](https://github.com/Cognitive-Proof/c2pa-soft-binding-server/pull/26) [`cf31d16`](https://github.com/Cognitive-Proof/c2pa-soft-binding-server/commit/cf31d164812358e8aad08985d76b3fc46bb0a0c4) Thanks [@mrappard](https://github.com/mrappard)! - Add `readManifest` and `matchers` options. `readManifest` (a `ManifestReader`) validates each upload to `POST /manifests` and reports its manifest id and soft-binding blocks, superseding `parseManifestId`. A `MatcherPlugin` registered in `matchers` answers queries for its algorithm with its own index (e.g. similarity) instead of the data store's exact lookup, is listed by `supportedAlgorithms` under the kind it declares, and, with a `readManifest`, indexes each stored manifest's soft bindings for that algorithm automatically and drops them when the manifest is deleted. Byte-for-byte the same upload isn't indexed twice, and an upload whose binding the matcher refuses is not kept. `byContent` and `byReference` now pass `hintAlg` to the matcher with a hint value. The types package adds `ManifestReader`, `ManifestInfo`, `SoftBindingBlock`, `MatcherPlugin` and `InvalidSoftBindingValueError`. Also fixes `supportedAlgorithms` listing an extractor twice.
+
 ## 1.2.0
 
 ### Minor Changes

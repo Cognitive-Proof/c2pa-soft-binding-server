@@ -1,6 +1,6 @@
 {
   "name": "@cognitiveproof/softbinding-api-plugin-c2pa-manifest",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "C2PA Manifest Store reader for the C2PA Soft Binding Resolution API server: validates uploads with c2pa-rs and reports their manifest id and soft bindings",
   "license": "MIT",
   "repository": {
@@ -22,7 +22,7 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest"
   },
   "dependencies": {
-    "@cognitiveproof/softbinding-api-plugin-types": "^1.2.0",
+    "@cognitiveproof/softbinding-api-plugin-types": "^1.3.0",
     "@contentauth/c2pa-node": "^0.12.0",
     "@contentauth/c2pa-utilities": "^0.5.1"
   },
